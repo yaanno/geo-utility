@@ -1,0 +1,16 @@
+[package]
+name = "geo-utility"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+proj = "0.28.0"
+geojson = "0.24.2"
+serde_json = "1.0"
+geo = "0.30.0"
+thiserror = "1.0"
+log = "0.4"
+env_logger = "0.10"
+rand = "0.8"
+rstar = "0.12.2"
+ordered-float = "2.0"
