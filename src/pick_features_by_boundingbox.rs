@@ -18,7 +18,7 @@ pub fn pick_features_by_boundingbox(
     featurecollection: &FeatureCollection,
     bbox: Polygon,
 ) -> Result<Vec<&Feature>, Error> {
-    let mut selected_features = Vec::new();
+    let mut selected_features = Vec::with_capacity(featurecollection.features.len());
 
     for feature in &featurecollection.features {
         let geometry_value = match feature.geometry.as_ref() {
@@ -31,10 +31,13 @@ pub fn pick_features_by_boundingbox(
 
         match geometry_value {
             Value::Point(coord) => {
+                // Convert the coordinate to a GeoCoord
                 let geo_coord = Coord {
                     x: coord[0],
                     y: coord[1],
                 };
+
+                // Check if the point is contained or intersects the bbox
                 let contains = bbox.contains(&geo_coord);
                 let intersects = bbox.intersects(&geo_coord);
                 if contains || intersects {
@@ -42,6 +45,7 @@ pub fn pick_features_by_boundingbox(
                 }
             }
             Value::LineString(line_coords) => {
+                // Convert the line coordinates to a LineString
                 let line: LineString<f64> = line_coords
                     .into_iter()
                     .map(|coord| Coord {
@@ -49,18 +53,25 @@ pub fn pick_features_by_boundingbox(
                         y: coord[1],
                     })
                     .collect();
+
+                // Check if the line intersects or contains the bbox
                 if bbox.intersects(&line) || bbox.contains(&line) {
                     selected_features.push(feature);
                 }
             }
             Value::Polygon(polygon_coords) => {
+                // Extract coords from exterior ring; interior rings don't affect intersection
                 if let Some(exterior_ring) = polygon_coords.first() {
+                    // Convert the exterior ring coordinates to a LineString
                     let line = exterior_ring
                         .iter()
                         .map(|c| Coord { x: c[0], y: c[1] })
                         .collect();
 
+                    // Create a Polygon from the LineString
                     let polygon = Polygon::new(line, vec![]);
+
+                    // Check if the Polygon intersects or contains the bbox
                     if bbox.intersects(&polygon) || bbox.contains(&polygon) {
                         selected_features.push(feature);
                     }
@@ -70,6 +81,7 @@ pub fn pick_features_by_boundingbox(
                 }
             }
             Value::MultiPoint(point_coords_vec) => {
+                // Convert the point coordinates to a Vec of Coords
                 let coords: Vec<Coord<f64>> = point_coords_vec
                     .into_iter()
                     .map(|coord| Coord {
@@ -77,7 +89,10 @@ pub fn pick_features_by_boundingbox(
                         y: coord[1],
                     })
                     .collect();
+                // Create a MultiPoint from the coordinates
                 let multi_point = MultiPoint::from(coords);
+
+                // Check if the MultiPoint intersects or contains the bbox
                 if bbox.intersects(&multi_point) || bbox.contains(&multi_point) {
                     selected_features.push(feature);
                 }
