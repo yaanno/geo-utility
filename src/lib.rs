@@ -1,6 +1,8 @@
 mod collect_convex_boundingboxes;
+mod extend_straight_line;
 mod pick_features_by_boundingbox;
 mod remove_near_points;
 pub use collect_convex_boundingboxes::collect_convex_boundingboxes;
+pub use extend_straight_line::extend_straight_line;
 pub use pick_features_by_boundingbox::pick_features_by_boundingbox;
 pub use remove_near_points::remove_near_points;
