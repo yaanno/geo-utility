@@ -10,11 +10,12 @@ pub fn extend_features(
     extension_distance: f64, // The distance to extend the lines
 ) -> Vec<(LineString<f64>, Option<SerdeValue>)> // Return generated geometry and original properties
 {
-    let mut generated_features: Vec<(LineString<f64>, Option<SerdeValue>)> = Vec::new();
+    let mut generated_features: Vec<(LineString<f64>, Option<SerdeValue>)> =
+        Vec::with_capacity(features.len());
 
-    for feature in features {
-        if let Some(geometry) = feature.geometry {
-            match geometry.value {
+    for feature in &features {
+        if let Some(geometry) = &feature.geometry {
+            match &geometry.value {
                 Value::LineString(line_coords) => {
                     // Filter out "Gebäudekante"
                     let is_gebaeudekante = feature
