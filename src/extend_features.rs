@@ -132,7 +132,8 @@ pub fn extend_features(
 
                                 // --- Build the generated LineStrings for this point ---
                                 // Each pair of points forms a line segment
-                                let mut generated_segments_coords: Vec<Coord<f64>> = Vec::new();
+                                let mut generated_segments_coords: Vec<Coord<f64>> =
+                                    Vec::with_capacity(8);
 
                                 // 1. Segment: current_point -> extended_forward
                                 generated_segments_coords.push(current_point.into());

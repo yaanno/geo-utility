@@ -1,4 +1,4 @@
-use geo::{Coord, LineString, Point}; // Make sure EuclideanLength is here
+use geo::{Coord, LineString, Point};
 use geojson::{Feature, Value};
 use serde_json::Value as SerdeValue;
 
@@ -30,7 +30,7 @@ pub fn process_vertices_and_bends(
                 Value::LineString(line_coords) => {
                     // Filter out "Gebäudekante"
                     if is_gebaeudekante(feature) {
-                        println!("Skipping feature with objectId: Gebäudekante");
+                        // println!("Skipping feature with objectId: Gebäudekante");
                         continue;
                     }
 
@@ -46,7 +46,7 @@ pub fn process_vertices_and_bends(
                     let num_points = coords.len();
 
                     if num_points < 2 {
-                        println!("LineString has fewer than 2 points, skipping.");
+                        // println!("LineString has fewer than 2 points, skipping.");
                         continue;
                     }
 
@@ -54,16 +54,15 @@ pub fn process_vertices_and_bends(
                     let mut generate_lines_at_point = |current_point: Point<f64>,
                                                        forward_direction: Point<f64>, // Vector for forward/orthogonal
                                                        backward_direction: Point<f64>, // Vector for backward extension
-                                                       original_properties: &Option<
-                        serde_json::Map<String, SerdeValue>,
-                    >| {
+                                                       
+                    | {
                         // Check if the forward direction vector has a non-zero length
                         let forward_length = forward_direction.x().hypot(forward_direction.y());
                         if forward_length == 0.0 {
-                            println!(
-                                "Skipping line generation at point {:?} due to zero-length forward direction vector.",
-                                current_point
-                            );
+                            // println!(
+                            //     "Skipping line generation at point {:?} due to zero-length forward direction vector.",
+                            //     current_point
+                            // );
                             return; // Cannot determine direction
                         }
 
@@ -147,15 +146,21 @@ pub fn process_vertices_and_bends(
                         let generated_line_string = LineString::new(generated_segments_coords);
 
                         // --- Store the generated geometry and original properties ---
+                        // DROPPING THE AMOUNT OF PROPERTIES HELPED REDUCING THE DATA FILE SIZE
+                        // EVENTUALLY THIS MADE THE ALGORITHM BENCHMARK MORE ACCURATE
+                        // THIS ALSO MEANS PERFORMANCE REGRESSIONS ARE MORE LIKELY TO BE RELATED
+                        // TO THE DATA SIZE ITSELF COMBINED WITH THE PROPERTY CLONING IN THE PROCESSING ALGORITHM
+                        // THAT IS NOW DISABLED BELOW
                         generated_features.push((
                             generated_line_string,
-                            original_properties.clone().map(SerdeValue::Object),
+                            // original_properties.clone().map(SerdeValue::Object),
+                            None,
                         ));
                     }; // End of generate_lines_at_point closure
 
                     // --- Process Multi-Segment LineStrings (length > 2) ---
                     if num_points > 2 {
-                        println!("Processing multi-segment line ({} points).", num_points);
+                        // println!("Processing multi-segment line ({} points).", num_points);
 
                         // Iterate through inner vertices (index 1 to num_points - 2)
                         for i in 1..(num_points - 1) {
@@ -174,10 +179,10 @@ pub fn process_vertices_and_bends(
 
                             // Skip bend check if either segment has zero length
                             if len_in == 0.0 || len_out == 0.0 {
-                                println!(
-                                    "Skipping bend check at point {:?} due to zero-length segment.",
-                                    p_current
-                                );
+                                // println!(
+                                //     "Skipping bend check at point {:?} due to zero-length segment.",
+                                //     p_current
+                                // );
                                 continue;
                             }
 
@@ -196,11 +201,11 @@ pub fn process_vertices_and_bends(
                             // Check if the angle indicates a significant bend
                             // We detect a bend if the turn angle is GREATER than the threshold
                             if angle_radians.abs() > bend_threshold_radians {
-                                println!(
-                                    "Detected bend at point {:?} with angle {:.2} degrees. Generating lines.",
-                                    p_current,
-                                    angle_radians.to_degrees()
-                                );
+                                // println!(
+                                //     "Detected bend at point {:?} with angle {:.2} degrees. Generating lines.",
+                                //     p_current,
+                                //     angle_radians.to_degrees()
+                                // );
 
                                 // At bends, use the outgoing segment direction (v_out) for forward/orthogonal
                                 // and the incoming segment direction (v_in) for backward.
@@ -208,7 +213,7 @@ pub fn process_vertices_and_bends(
                                     p_current,
                                     v_out,
                                     v_in,
-                                    &feature.properties,
+                                    // &feature.properties,
                                 );
                             }
                             // Else: No significant bend at this inner vertex, no lines generated in this block
@@ -219,13 +224,13 @@ pub fn process_vertices_and_bends(
                         // Based on the TS, simple lines process ends. Multi-segment only process inner bends.
                         // If you need to process ends of multi-segment lines too, add logic here
                         // similar to the 2-point case, using the first/last segment directions.
-                        println!(
-                            "Inner vertices of multi-segment line processed. Start/End points not processed in this block."
-                        );
+                        // println!(
+                        //     "Inner vertices of multi-segment line processed. Start/End points not processed in this block."
+                        // );
                     }
                     // --- Process Simple 2-Point LineStrings ---
                     else if num_points == 2 {
-                        println!("Processing simple 2-point line.");
+                        // println!("Processing simple 2-point line.");
                         let p_start = Point::from(coords[0]);
                         let p_end = Point::from(coords[1]);
 
@@ -235,23 +240,23 @@ pub fn process_vertices_and_bends(
                             Point::new(p_start.x() - p_end.x(), p_start.y() - p_end.y());
 
                         // Process the Start Point (index 0)
-                        println!("Generating lines at start point {:?}.", p_start);
+                        // println!("Generating lines at start point {:?}.", p_start);
                         // For the start point, forward is 0->1, backward is 1->0
                         generate_lines_at_point(
                             p_start,
                             direction_forward_segment,
                             direction_backward_segment,
-                            &feature.properties,
+                            // &feature.properties,
                         );
 
                         // Process the End Point (index 1)
-                        println!("Generating lines at end point {:?}.", p_end);
+                        // println!("Generating lines at end point {:?}.", p_end);
                         // For the end point, forward is 1->0, backward is 0->1
                         generate_lines_at_point(
                             p_end,
                             direction_backward_segment,
                             direction_forward_segment,
-                            &feature.properties,
+                            // &feature.properties,
                         );
                     } // Else: num_points < 2 handled at the beginning
                 }
