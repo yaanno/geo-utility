@@ -74,6 +74,21 @@ fn bench_1000k_features(c: &mut Criterion) {
     });
 }
 
+fn bench_10_000k_features(c: &mut Criterion) {
+    let scale_factor = 0.5;
+
+    let features_1m =
+        load_features_from_file("synthetic_data_featurecollection_10000k_features.geojson");
+
+    c.bench_function("scale_buildings_10_000k_features", |b| {
+        b.iter(|| {
+            let input_data = features_1m.clone();
+            let results = scale_buildings(&input_data, scale_factor);
+            black_box(results);
+        })
+    });
+}
+
 criterion_group!(
     name = benches_1k;
     config = Criterion::default().sample_size(50); // Reduce samples
@@ -103,4 +118,17 @@ criterion_group!(
     targets = bench_1000k_features
 );
 
-criterion_main!(benches_1k, benches_10k, benches_100k, benches_1000k);
+// For 100k features, warning suggested sample count 10 (or increase time to 27.7s)
+criterion_group!(
+    name = benches_10_000k;
+    config = Criterion::default().sample_size(10); // Reduce samples significantly
+    targets = bench_10_000k_features
+);
+
+criterion_main!(
+    benches_1k,
+    benches_10k,
+    benches_100k,
+    benches_1000k,
+    benches_10_000k
+);

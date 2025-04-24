@@ -33,7 +33,7 @@ fn generate_synthetic_data() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn generate_synthetic_collection_data() -> Result<(), Box<dyn std::error::Error>> {
-    let num_features = 1_000_000;
+    let num_features = 10_000_000;
     let x_range = (-1000.0, 1000.0);
     let y_range = (-1000.0, 1000.0);
 
