@@ -134,19 +134,19 @@ pub fn collect_convex_boundingboxes(
                 }
             }
             Value::LineString(line_coords) => {
-                if line_coords.iter().all(|c| is_coordinate_in_germany(c)) {
-                    coords.extend(line_coords.iter().map(|c| Coord { x: c[0], y: c[1] }));
-                } else {
+                if line_coords.iter().any(|c| !is_coordinate_in_germany(c)) {
                     all_points_in_germany = false;
+                } else {
+                    coords.extend(line_coords.iter().map(|c| Coord { x: c[0], y: c[1] }));
                 }
             }
             Value::Polygon(polygon_coords) => {
                 // Extract coords from exterior ring; interior rings don't affect convex hull
                 if let Some(exterior_ring) = polygon_coords.first() {
-                    if exterior_ring.iter().all(|c| is_coordinate_in_germany(c)) {
-                        coords.extend(exterior_ring.iter().map(|c| Coord { x: c[0], y: c[1] }));
-                    } else {
+                    if exterior_ring.iter().any(|c| !is_coordinate_in_germany(c)) {
                         all_points_in_germany = false;
+                    } else {
+                        coords.extend(exterior_ring.iter().map(|c| Coord { x: c[0], y: c[1] }));
                     }
                 } else {
                     // Polygon has no exterior ring, skip
@@ -154,10 +154,13 @@ pub fn collect_convex_boundingboxes(
                 }
             }
             Value::MultiPoint(point_coords_vec) => {
-                if point_coords_vec.iter().all(|c| is_coordinate_in_germany(c)) {
-                    coords.extend(point_coords_vec.iter().map(|c| Coord { x: c[0], y: c[1] }));
-                } else {
+                if point_coords_vec
+                    .iter()
+                    .any(|c| !is_coordinate_in_germany(c))
+                {
                     all_points_in_germany = false;
+                } else {
+                    coords.extend(point_coords_vec.iter().map(|c| Coord { x: c[0], y: c[1] }));
                 }
             }
             Value::MultiLineString(multiline_coords_vec) => {
@@ -165,16 +168,16 @@ pub fn collect_convex_boundingboxes(
                 if multiline_coords_vec
                     .iter()
                     .flatten()
-                    .all(|c| is_coordinate_in_germany(c))
+                    .any(|c| !is_coordinate_in_germany(c))
                 {
+                    all_points_in_germany = false;
+                } else {
                     coords.extend(
                         multiline_coords_vec
                             .iter()
                             .flatten()
                             .map(|c| Coord { x: c[0], y: c[1] }),
                     );
-                } else {
-                    all_points_in_germany = false;
                 }
             }
             Value::MultiPolygon(multipolygon_coords_vec) => {
@@ -187,15 +190,15 @@ pub fn collect_convex_boundingboxes(
 
                 if all_exterior_coords
                     .iter()
-                    .all(|c| is_coordinate_in_germany(c))
+                    .any(|c| !is_coordinate_in_germany(c))
                 {
+                    all_points_in_germany = false;
+                } else {
                     coords.extend(
                         all_exterior_coords
                             .iter()
                             .map(|c| Coord { x: c[0], y: c[1] }),
                     );
-                } else {
-                    all_points_in_germany = false;
                 }
             }
             // Add other geometry types here if needed, otherwise they are skipped
