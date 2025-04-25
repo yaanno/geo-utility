@@ -31,7 +31,6 @@ fn gen_polygon_ring(
         coords.push(gen_coord(rng, x_range, y_range)); // Add another
         coords.push(coords[0].clone()); // Close with the first dummy
     }
-
     coords
 }
 
@@ -64,11 +63,11 @@ pub fn generate_synthetic_complex_featurecollection(
         // Randomly select a geometry type (0..NUM_GEOM_TYPES)
         let geom_type = rng.gen_range(0..NUM_GEOM_TYPES);
 
-        let geometry = match geom_type {
+        let (geometry, bbox) = match geom_type {
             0 => {
                 // Point
                 let coord = gen_coord(&mut rng, x_range, y_range);
-                Some(Geometry::new(Value::Point(coord)))
+                (Some(Geometry::new(Value::Point(coord))), None)
             }
             1 => {
                 // LineString
@@ -83,14 +82,55 @@ pub fn generate_synthetic_complex_featurecollection(
                 let coords: Vec<Vec<f64>> = (0..num_points)
                     .map(|_| gen_coord(&mut rng, x_range, y_range))
                     .collect();
-                Some(Geometry::new(Value::LineString(coords)))
+                // calculate bounding box from coords
+                let bbox = if coords.len() >= 2 {
+                    let min_x = coords.iter().map(|c| c[0]).fold(f64::INFINITY, f64::min);
+                    let max_x = coords
+                        .iter()
+                        .map(|c| c[0])
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let min_y = coords.iter().map(|c| c[1]).fold(f64::INFINITY, f64::min);
+                    let max_y = coords
+                        .iter()
+                        .map(|c| c[1])
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    Some(vec![min_x, min_y, max_x, max_y])
+                } else {
+                    None
+                };
+                (Some(Geometry::new(Value::LineString(coords))), bbox)
             }
             2 => {
                 // Polygon (exterior ring only for simplicity)
                 // Generate a ring with 4 to 8 points (closed)
                 let num_points = rng.gen_range(4..=8);
                 let exterior_ring = gen_polygon_ring(&mut rng, x_range, y_range, num_points);
-                Some(Geometry::new(Value::Polygon(vec![exterior_ring])))
+                // calculate bounding box from coords
+                let bbox = if exterior_ring.len() >= 2 {
+                    let min_x = exterior_ring
+                        .iter()
+                        .map(|c| c[0])
+                        .fold(f64::INFINITY, f64::min);
+                    let max_x = exterior_ring
+                        .iter()
+                        .map(|c| c[0])
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let min_y = exterior_ring
+                        .iter()
+                        .map(|c| c[1])
+                        .fold(f64::INFINITY, f64::min);
+                    let max_y = exterior_ring
+                        .iter()
+                        .map(|c| c[1])
+                        .fold(f64::INFINITY, f64::min);
+                    Some(vec![min_x, min_y, max_x, max_y])
+                } else {
+                    None
+                };
+                (
+                    Some(Geometry::new(Value::Polygon(vec![exterior_ring]))),
+                    bbox,
+                )
             }
             3 => {
                 // MultiPoint
@@ -116,7 +156,20 @@ pub fn generate_synthetic_complex_featurecollection(
                     }
                 }
 
-                Some(Geometry::new(Value::MultiPoint(coords)))
+                // calculate bounding box from coords
+                let bbox = if coords.len() >= 2 {
+                    let min_x = coords.iter().map(|c| c[0]).fold(f64::INFINITY, f64::min);
+                    let max_x = coords
+                        .iter()
+                        .map(|c| c[0])
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let min_y = coords.iter().map(|c| c[1]).fold(f64::INFINITY, f64::min);
+                    let max_y = coords.iter().map(|c| c[1]).fold(f64::INFINITY, f64::min);
+                    Some(vec![min_x, min_y, max_x, max_y])
+                } else {
+                    None
+                };
+                (Some(Geometry::new(Value::MultiPoint(coords))), bbox)
             }
             4 => {
                 // MultiLineString
@@ -131,7 +184,36 @@ pub fn generate_synthetic_complex_featurecollection(
                             .collect()
                     })
                     .collect();
-                Some(Geometry::new(Value::MultiLineString(linestrings_coords)))
+                // calculate bounding box from coords
+                let bbox = if linestrings_coords.len() >= 2 {
+                    let min_x = linestrings_coords
+                        .iter()
+                        .flatten()
+                        .map(|c| c[0])
+                        .fold(f64::INFINITY, f64::min);
+                    let max_x = linestrings_coords
+                        .iter()
+                        .flatten()
+                        .map(|c| c[0])
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let min_y = linestrings_coords
+                        .iter()
+                        .flatten()
+                        .map(|c| c[1])
+                        .fold(f64::INFINITY, f64::min);
+                    let max_y = linestrings_coords
+                        .iter()
+                        .flatten()
+                        .map(|c| c[1])
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    Some(vec![min_x, min_y, max_x, max_y])
+                } else {
+                    None
+                };
+                (
+                    Some(Geometry::new(Value::MultiLineString(linestrings_coords))),
+                    bbox,
+                )
             }
             5 => {
                 // MultiPolygon (exterior rings only for simplicity)
@@ -146,13 +228,46 @@ pub fn generate_synthetic_complex_featurecollection(
                         vec![exterior_ring] // Polygon Value is a list of rings (exterior + interiors)
                     })
                     .collect();
-                Some(Geometry::new(Value::MultiPolygon(polygons_coords)))
+                // calculate bounding box from coords
+                let bbox = if polygons_coords.len() >= 2 {
+                    let min_x = polygons_coords
+                        .iter()
+                        .flatten()
+                        .flatten()
+                        .map(|c| c[0])
+                        .fold(f64::INFINITY, f64::min);
+                    let max_x = polygons_coords
+                        .iter()
+                        .flatten()
+                        .flatten()
+                        .map(|c| c[0])
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    let min_y = polygons_coords
+                        .iter()
+                        .flatten()
+                        .flatten()
+                        .map(|c| c[1])
+                        .fold(f64::INFINITY, f64::min);
+                    let max_y = polygons_coords
+                        .iter()
+                        .flatten()
+                        .flatten()
+                        .map(|c| c[1])
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    Some(vec![min_x, min_y, max_x, max_y])
+                } else {
+                    None
+                };
+                (
+                    Some(Geometry::new(Value::MultiPolygon(polygons_coords))),
+                    bbox,
+                )
             }
-            _ => None, // Should not happen with gen_range(0..NUM_GEOM_TYPES)
+            _ => (None, None), // Should not happen with gen_range(0..NUM_GEOM_TYPES)
         };
 
         let feature = Feature {
-            bbox: None,
+            bbox,
             geometry,
             id: Some(geojson::feature::Id::Number((i as u64).into())), // Simple ID
             properties: None,
