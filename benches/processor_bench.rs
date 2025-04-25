@@ -103,7 +103,8 @@ criterion_group!(
 // For 100k features, warning suggested sample count 10 (or increase time to 27.7s)
 criterion_group!(
     name = benches_1000k;
-    config = Criterion::default().sample_size(10); // Reduce samples significantly
+    config = Criterion::default().sample_size(10)
+    .measurement_time(std::time::Duration::from_secs(45)); // Reduce samples significantly
     targets = bench_1000k_features
 );
 
