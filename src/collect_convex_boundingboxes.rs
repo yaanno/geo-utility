@@ -1,12 +1,19 @@
 // Collects convex bounding boxes from a geojson FeatureCollection.
 
-use geo::Coord; // Import other necessary geo types
 use geo::algorithm::convex_hull::ConvexHull; // Import the ConvexHull trait
 use geo::geometry::MultiPoint; // Import MultiPoint
+use geo::{Coord, Intersects, Rect}; // Import other necessary geo types
 use geojson::{FeatureCollection, Value};
 use ordered_float::OrderedFloat;
 use std::collections::HashSet;
 use thiserror::Error;
+
+const GERMANY_BBOX: [f64; 4] = [
+    5.866211,  // Min longitude
+    47.270111, // Min latitude
+    15.013611, // Max longitude
+    55.058333, // Max latitude
+];
 
 // Define error type (kept as is, though less frequently returned now)
 #[derive(Error, Debug)]
@@ -61,8 +68,46 @@ pub fn collect_convex_boundingboxes(
     featurecollection: &FeatureCollection,
 ) -> Result<Vec<geo::Polygon>, Error> {
     let mut hulls: Vec<geo::Polygon> = Vec::new();
+    let germany_rect: Rect = Rect::new(
+        Coord {
+            x: 5.866211,
+            y: 47.270111,
+        },
+        Coord {
+            x: 15.013611,
+            y: 55.058333,
+        },
+    );
 
     for feature in &featurecollection.features {
+        // --- NEW: Early Filtering using Feature Bounding Box ---
+        // Check if the feature has a bbox and if it intersects the Germany bbox
+        if let Some(feature_bbox_value) = &feature.bbox {
+            // GeoJSON bbox format: [min_x, min_y, max_x, max_y]
+            if feature_bbox_value.len() >= 4 {
+                let feature_rect = Rect::new(
+                    Coord {
+                        x: feature_bbox_value[0],
+                        y: feature_bbox_value[1],
+                    },
+                    Coord {
+                        x: feature_bbox_value[2],
+                        y: feature_bbox_value[3],
+                    },
+                );
+
+                // If the feature's bbox does NOT intersect Germany's, skip the feature
+                if !feature_rect.intersects(&germany_rect) {
+                    continue; // Skip to the next feature in the loop
+                }
+                // If it *does* intersect, or if the bbox was missing/invalid,
+                // proceed to the detailed geometry check below.
+            }
+            // If bbox is present but invalid length, we fall through and process geometry
+        }
+        // If feature.bbox is None, we fall through and process geometry
+
+        // --- Existing Logic Starts Here (Only runs for features not skipped by bbox check) ---
         // 1. Check for geometry and extract coordinates based on type
         let geometry_value = match feature.geometry.as_ref() {
             Some(geometry) => &geometry.value,
@@ -211,13 +256,6 @@ pub fn collect_convex_boundingboxes(
 /// # Returns
 /// `true` if the coordinate is within the bounding box, `false` otherwise.
 fn is_coordinate_in_germany(coord: &[f64]) -> bool {
-    const GERMANY_BBOX: [f64; 4] = [
-        5.866211,  // Min longitude
-        47.270111, // Min latitude
-        15.013611, // Max longitude
-        55.058333, // Max latitude
-    ];
-
     // Ensure coord has at least 2 elements (longitude, latitude)
     if coord.len() < 2 {
         return false; // Cannot check if coords are invalid

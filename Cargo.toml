@@ -20,4 +20,15 @@ criterion = "0.5"
 
 [[bench]]
 name = "processor_bench"
+path = "benches/processor_bench.rs"
+harness = false
+
+[[bench]]
+name = "scale_building_bench"
+path = "benches/scale_building_bench.rs"
+harness = false
+
+[[bench]]
+name = "collect_convex_bench"
+path = "benches/collect_convex_bench.rs"
 harness = false

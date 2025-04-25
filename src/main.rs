@@ -1,10 +1,14 @@
 use std::fs::File;
 use std::io::Write;
 
-use geo_utility::{generate_synthetic_featurecollection, generate_synthetic_linestrings}; // Assuming it's public
+use geo_utility::{
+    generate_synthetic_complex_featurecollection, generate_synthetic_featurecollection,
+    generate_synthetic_linestrings,
+}; // Assuming it's public
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    generate_synthetic_collection_data()?;
+    // generate_synthetic_collection_data()?;
+    generate_synthetic_complex_collection_data()?;
 
     Ok(())
 }
@@ -32,6 +36,7 @@ fn generate_synthetic_data() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn generate_synthetic_collection_data() -> Result<(), Box<dyn std::error::Error>> {
     let num_features = 10_000_000;
     let x_range = (-1000.0, 1000.0);
@@ -45,6 +50,31 @@ fn generate_synthetic_collection_data() -> Result<(), Box<dyn std::error::Error>
 
     let file_path = format!(
         "synthetic_data_featurecollection_{}k_features.geojson",
+        num_features / 1000
+    );
+    let mut file = File::create(&file_path)?;
+    file.write_all(geojson_string.as_bytes())?;
+
+    println!("Data saved to {}", file_path);
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn generate_synthetic_complex_collection_data() -> Result<(), Box<dyn std::error::Error>> {
+    let num_features = 1_000_000;
+    let x_range = (4.0, 16.0);
+    let y_range = (46.0, 56.0);
+
+    println!("Generating {} features...", num_features);
+    let feature_collection =
+        generate_synthetic_complex_featurecollection(num_features, x_range, y_range);
+    println!("Generation complete. Serializing to JSON...");
+
+    let geojson_string = serde_json::to_string(&feature_collection)?;
+
+    let file_path = format!(
+        "synthetic_data_complex_featurecollection_{}k_features.geojson",
         num_features / 1000
     );
     let mut file = File::create(&file_path)?;

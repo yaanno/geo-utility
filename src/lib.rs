@@ -1,6 +1,7 @@
 mod collect_convex_boundingboxes;
 mod extend_features;
 mod extend_straight_line;
+mod generate_synthetic_complex_featurecollection;
 mod generate_synthetic_featurecollection;
 mod generate_synthetic_linestrings;
 mod pick_features_by_boundingbox;
@@ -10,6 +11,7 @@ mod scale_buildings;
 pub use collect_convex_boundingboxes::collect_convex_boundingboxes;
 pub use extend_features::extend_features;
 pub use extend_straight_line::extend_straight_line;
+pub use generate_synthetic_complex_featurecollection::generate_synthetic_complex_featurecollection;
 pub use generate_synthetic_featurecollection::generate_synthetic_featurecollection;
 pub use generate_synthetic_linestrings::generate_synthetic_linestrings;
 pub use pick_features_by_boundingbox::pick_features_by_boundingbox;
