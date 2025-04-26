@@ -80,7 +80,7 @@ fn bench_1000k_features(c: &mut Criterion) {
 
 criterion_group!(
     name = benches_1k;
-    config = Criterion::default().sample_size(50); // Reduce samples
+    config = Criterion::default().sample_size(100);
     targets = bench_1k_features                           // List the benchmark function(s) for this group
 );
 
@@ -104,7 +104,7 @@ criterion_group!(
 criterion_group!(
     name = benches_1000k;
     config = Criterion::default().sample_size(10)
-    .measurement_time(std::time::Duration::from_secs(45)); // Reduce samples significantly
+    .measurement_time(std::time::Duration::from_secs(50));
     targets = bench_1000k_features
 );
 
