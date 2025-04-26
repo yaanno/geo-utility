@@ -36,3 +36,6 @@ Cargo.lock
 # Test coverage
 coverage/
 *.profraw
+
+# Benchmark sample data
+synthetic_data_*.geojson

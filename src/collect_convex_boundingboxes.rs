@@ -1,8 +1,8 @@
 // Collects convex bounding boxes from a geojson FeatureCollection.
 
 use geo::algorithm::convex_hull::ConvexHull; // Import the ConvexHull trait
-use geo::geometry::MultiPoint; // Import MultiPoint
-use geo::{Coord, Intersects, Rect}; // Import other necessary geo types
+use geo::geometry::{LineString as GeoLineString, MultiPoint};
+use geo::{BoundingRect, Coord, Intersects, Point, Rect}; // Import other necessary geo types
 use geojson::{FeatureCollection, Value};
 use ordered_float::OrderedFloat;
 use std::collections::HashSet;
@@ -55,16 +55,19 @@ fn canonical_hull_unique_sorted_points(
     sorted_unique
 }
 
-/// Collects convex bounding boxes from a geojson FeatureCollection.
+/// Collects convex bounding boxes and fallback bounding box polygons
+/// from a geojson FeatureCollection.
 ///
 /// # Arguments
-/// * `featurecollection` - The FeatureCollection from which to collect convex bounding boxes.
+/// * `featurecollection` - The FeatureCollection from which to collect bounding box polygons.
 ///
 /// # Returns
-/// A vector of convex bounding boxes as geo::Polygon.
+/// A vector of polygons, including convex hulls for features with >= 3 unique points
+/// and bounding box polygons for features with < 3 unique points that can form a bounding box.
 /// # Errors
 /// Returns an error if the geometry type is unsupported or if there are invalid coordinates.
 pub fn collect_convex_boundingboxes(
+    // Renamed the function to reflect fallback
     featurecollection: &FeatureCollection,
 ) -> Result<Vec<geo::Polygon>, Error> {
     let mut hulls: Vec<geo::Polygon> = Vec::new();
@@ -80,10 +83,8 @@ pub fn collect_convex_boundingboxes(
     );
 
     for feature in &featurecollection.features {
-        // --- NEW: Early Filtering using Feature Bounding Box ---
-        // Check if the feature has a bbox and if it intersects the Germany bbox
+        // --- Early Filtering using Feature Bounding Box ---
         if let Some(feature_bbox_value) = &feature.bbox {
-            // GeoJSON bbox format: [min_x, min_y, max_x, max_y]
             if feature_bbox_value.len() >= 4 {
                 let feature_rect = Rect::new(
                     Coord {
@@ -96,31 +97,26 @@ pub fn collect_convex_boundingboxes(
                     },
                 );
 
-                // If the feature's bbox does NOT intersect Germany's, skip the feature
                 if !feature_rect.intersects(&germany_rect) {
-                    continue; // Skip to the next feature in the loop
+                    continue;
                 }
-                // If it *does* intersect, or if the bbox was missing/invalid,
-                // proceed to the detailed geometry check below.
             }
-            // If bbox is present but invalid length, we fall through and process geometry
         }
-        // If feature.bbox is None, we fall through and process geometry
 
-        // --- Existing Logic Starts Here (Only runs for features not skipped by bbox check) ---
-        // 1. Check for geometry and extract coordinates based on type
+        // --- Extract geometry and check location based on type ---
         let geometry_value = match feature.geometry.as_ref() {
             Some(geometry) => &geometry.value,
             None => {
-                // Skip features without geometry
-                continue;
+                continue; // Skip features without geometry
             }
         };
 
         let mut coords: Vec<Coord> = Vec::new();
         let mut all_points_in_germany = true;
+        let mut geometry_to_process: Option<geo::Geometry> = None; // Store geo::Geometry for fallback bbox calculation
 
         // Extract coordinates and check location based on geometry type
+        // Also create geo::Geometry for fallback bounding_rect calculation
         match geometry_value {
             Value::Point(coord) => {
                 let geo_coord = Coord {
@@ -128,80 +124,118 @@ pub fn collect_convex_boundingboxes(
                     y: coord[1],
                 };
                 if is_coordinate_in_germany(&coord) {
-                    coords.push(geo_coord);
+                    coords.push(geo_coord); // Use for unique count check
+                    geometry_to_process = Some(geo::Geometry::Point(Point::from(geo_coord))); // Create geo::Point for bbox
                 } else {
                     all_points_in_germany = false;
                 }
             }
             Value::LineString(line_coords) => {
-                if line_coords.iter().any(|c| !is_coordinate_in_germany(c)) {
+                let line_coords_geo: Vec<Coord> = line_coords
+                    .iter()
+                    .map(|c| Coord { x: c[0], y: c[1] })
+                    .collect();
+                if line_coords_geo
+                    .iter()
+                    .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
+                {
                     all_points_in_germany = false;
                 } else {
-                    coords.extend(line_coords.iter().map(|c| Coord { x: c[0], y: c[1] }));
+                    coords.extend(line_coords_geo.clone()); // Use for unique count check
+                    geometry_to_process = Some(geo::Geometry::LineString(GeoLineString::new(
+                        line_coords_geo,
+                    ))); // Create geo::LineString for bbox
                 }
             }
             Value::Polygon(polygon_coords) => {
                 // Extract coords from exterior ring; interior rings don't affect convex hull
-                if let Some(exterior_ring) = polygon_coords.first() {
-                    if exterior_ring.iter().any(|c| !is_coordinate_in_germany(c)) {
+                if let Some(exterior_ring_coords) = polygon_coords.first() {
+                    let exterior_ring_geo_coords: Vec<Coord> = exterior_ring_coords
+                        .iter()
+                        .map(|c| Coord { x: c[0], y: c[1] })
+                        .collect();
+                    if exterior_ring_geo_coords
+                        .iter()
+                        .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
+                    {
                         all_points_in_germany = false;
                     } else {
-                        coords.extend(exterior_ring.iter().map(|c| Coord { x: c[0], y: c[1] }));
+                        coords.extend(exterior_ring_geo_coords); // Use for unique count check
+                        // For Polygon, we'll likely calculate convex hull directly if >=3 points
+                        // No need to store the full polygon geometry_to_process here unless needed elsewhere
                     }
                 } else {
                     // Polygon has no exterior ring, skip
                     continue;
                 }
             }
+            // Add other geometry types here (MultiPoint, MultiLineString, MultiPolygon)
+            // Extract their coordinates, check if in Germany, and if applicable,
+            // create the corresponding geo::Geometry value for geometry_to_process.
             Value::MultiPoint(point_coords_vec) => {
-                if point_coords_vec
+                let multipoint_geo_coords: Vec<Coord> = point_coords_vec
                     .iter()
-                    .any(|c| !is_coordinate_in_germany(c))
+                    .map(|c| Coord { x: c[0], y: c[1] })
+                    .collect();
+                if multipoint_geo_coords
+                    .iter()
+                    .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
                 {
                     all_points_in_germany = false;
                 } else {
-                    coords.extend(point_coords_vec.iter().map(|c| Coord { x: c[0], y: c[1] }));
+                    coords.extend(multipoint_geo_coords.clone()); // Use for unique count check
+                    if !multipoint_geo_coords.is_empty() {
+                        geometry_to_process = Some(geo::Geometry::MultiPoint(MultiPoint::new(
+                            multipoint_geo_coords.into_iter().map(Point::from).collect(),
+                        )));
+                    }
                 }
             }
             Value::MultiLineString(multiline_coords_vec) => {
-                // Check all points in all lines
-                if multiline_coords_vec
+                let multiline_geo_coords: Vec<Coord> = multiline_coords_vec
                     .iter()
                     .flatten()
-                    .any(|c| !is_coordinate_in_germany(c))
+                    .map(|c| Coord { x: c[0], y: c[1] })
+                    .collect();
+                if multiline_geo_coords
+                    .iter()
+                    .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
                 {
                     all_points_in_germany = false;
                 } else {
-                    coords.extend(
-                        multiline_coords_vec
-                            .iter()
-                            .flatten()
-                            .map(|c| Coord { x: c[0], y: c[1] }),
-                    );
+                    coords.extend(multiline_geo_coords.clone()); // Use for unique count check
+                    // Creating a geo::MultiLineString from flatten coords is tricky,
+                    // but we can use the flatten coords for convex hull/bbox.
+                    // Or process each LineString in MultiLineString individually if preferred.
+                    // For a simple bbox fallback, we can use the flattened coords.
+                    if !multiline_geo_coords.is_empty() {
+                        // Note: Creating a single LineString from flattened MultiLineString coords might not preserve structure
+                        // but works for overall bbox. Consider iterating MultiLineString sections if precise per-line bbox needed.
+                        geometry_to_process = Some(geo::Geometry::LineString(GeoLineString::new(
+                            multiline_geo_coords,
+                        ))); // Using LineString for simplicity here, bbox is the same
+                    }
                 }
             }
             Value::MultiPolygon(multipolygon_coords_vec) => {
-                // Extract coords from all exterior rings
-                let all_exterior_coords = multipolygon_coords_vec
+                let all_exterior_coords: Vec<Coord> = multipolygon_coords_vec
                     .iter()
                     .filter_map(|poly| poly.first())
                     .flatten()
-                    .collect::<Vec<_>>();
+                    .map(|c| Coord { x: c[0], y: c[1] })
+                    .collect();
 
                 if all_exterior_coords
                     .iter()
-                    .any(|c| !is_coordinate_in_germany(c))
+                    .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
                 {
                     all_points_in_germany = false;
                 } else {
-                    coords.extend(
-                        all_exterior_coords
-                            .iter()
-                            .map(|c| Coord { x: c[0], y: c[1] }),
-                    );
+                    coords.extend(all_exterior_coords.clone()); // Use for unique count check
+                    // Similar to MultiLineString, creating the full geo::MultiPolygon is more complex
+                    // We'll rely on extracted coords for hull/bbox
                 }
             }
-            // Add other geometry types here if needed, otherwise they are skipped
             _ => {
                 // Skip unsupported geometry types
                 continue;
@@ -210,37 +244,46 @@ pub fn collect_convex_boundingboxes(
 
         // 2. Check if all relevant points were in Germany
         if !all_points_in_germany {
-            // Skip features that were not entirely within the bounding box
-            continue;
+            continue; // Skip features that were not entirely within Germany bbox
         }
 
-        // *** MODIFIED CHECK FOR SUFFICIENT POINTS ***
-        // Check number of *unique* points derived from the geometry
+        // 3. Check number of *unique* points derived from the geometry
         let unique_coords_count = coords
             .iter()
             .map(|c| (OrderedFloat(c.x), OrderedFloat(c.y)))
             .collect::<HashSet<_>>()
             .len();
 
+        // *** MODIFIED LOGIC FOR FALLBACK OR CONVEX HULL ***
         if unique_coords_count < 3 {
-            continue; // Skip features with less than 3 *unique* coordinates
+            // --- FALLBACK: Calculate bounding box and convert to polygon ---
+            // Need to handle the case where `geometry_to_process` might not have been set
+            // for some geometry types or empty collections resulted in all_points_in_germany = true but no coords
+            let fallback_polygon = geometry_to_process
+                .as_ref() // Get a reference to the geo::Geometry
+                .and_then(|geom| geom.bounding_rect()) // Try to get the bounding Rect
+                .map(|rect| rect.to_polygon()); // Convert the Rect to a Polygon
+
+            if let Some(poly) = fallback_polygon {
+                hulls.push(poly);
+            }
+            // else: If bounding_rect() failed (e.g. empty geometry or invalid), we just don't add anything for this feature.
+        } else {
+            // --- CONVEX HULL (Original Logic) ---
+            // Compute the convex hull (use the original `coords` list which might have > unique_coords_count points)
+            let multi_point = MultiPoint::from(coords);
+            let hull = multi_point.convex_hull(); // This will be a geo::Polygon because unique_coords_count >= 3
+
+            hulls.push(hull); // Collect the computed hull
         }
-
-        // 3. Compute the convex hull (use the original `coords` list which might have > unique_coords_count points)
-        let multi_point = MultiPoint::from(coords); // MultiPoint handles duplicate points internally
-        let hull = multi_point.convex_hull();
-
-        hulls.push(hull); // Collect all computed hulls first
     }
 
-    // --- Post-processing step: Filter out duplicate hulls ---
+    // --- Post-processing step: Filter out duplicate hulls (including fallback ones) ---
     let mut unique_hulls: Vec<geo::Polygon> = Vec::with_capacity(hulls.len());
-    // Use the unique sorted points representation as the key in the HashSet
     let mut seen_canonical_coords: HashSet<Vec<(OrderedFloat<f64>, OrderedFloat<f64>)>> =
         HashSet::with_capacity(hulls.len());
 
     for hull in hulls {
-        // Use the unique sorted points canonicalization for hashing
         let canonical_coords_hashable = canonical_hull_unique_sorted_points(&hull);
 
         if seen_canonical_coords.insert(canonical_coords_hashable) {
@@ -270,6 +313,114 @@ fn is_coordinate_in_germany(coord: &[f64]) -> bool {
         && coord[1] <= GERMANY_BBOX[3]
 }
 
+#[allow(dead_code)]
+fn convert_polygons_to_bounding_boxes(polygons: Vec<geo::Polygon>) -> Vec<geo::Rect> {
+    polygons
+        .into_iter()
+        .map(|poly| poly.bounding_rect().unwrap())
+        .collect()
+}
+
+#[allow(dead_code)]
+/// Extends a bounding box to ensure it is a multiple of a given arealength.
+///
+/// # Arguments
+/// * `bbox` - The bounding box to extend.
+/// * `arealength` - The arealength to which the bounding box should be extended.
+/// # Returns
+/// The extended bounding box.
+fn extend_bounding_box(bbox: geo::Rect, arealength: f64) -> geo::Rect {
+    let width = bbox.width();
+    let height = bbox.height();
+
+    let length_width = if width < arealength {
+        arealength + 1.0 - width
+    } else {
+        arealength + 1.0 - (width % arealength)
+    };
+
+    let length_height = if height < arealength {
+        arealength + 1.0 - height
+    } else {
+        arealength + 1.0 - (height % arealength)
+    };
+
+    let new_min_x = bbox.min().x - length_width / 2.0;
+    let new_min_y = bbox.min().y - length_height / 2.0;
+    let new_max_x = bbox.max().x + length_width / 2.0;
+    let new_max_y = bbox.max().y + length_height / 2.0;
+
+    geo::Rect::new(
+        geo::Coord {
+            x: new_min_x,
+            y: new_min_y,
+        },
+        geo::Coord {
+            x: new_max_x,
+            y: new_max_y,
+        },
+    )
+}
+
+// Assume your create_square_grid function is defined here
+#[allow(dead_code)]
+/// Creates a square grid from a bounding box with specified cell dimensions.
+///
+/// # Arguments
+/// * `bbox` - The bounding box from which to create the grid.
+/// * `cell_width` - The width of each cell in the grid.
+/// * `cell_height` - The height of each cell in the grid.
+/// # Returns
+/// A vector of rectangles representing the grid cells.
+fn create_square_grid(bbox: geo::Rect, cell_width: f64, cell_height: f64) -> Vec<geo::Rect> {
+    let mut grid = Vec::new();
+
+    // Ensure cell dimensions are positive to avoid infinite loops
+    if cell_width <= 0.0 || cell_height <= 0.0 {
+        return grid;
+    }
+
+    let bbox_min_x = bbox.min().x;
+    let bbox_min_y = bbox.min().y;
+    let bbox_max_x = bbox.max().x;
+    let bbox_max_y = bbox.max().y;
+
+    // Handle cases where bbox is degenerate or inverted (max <= min)
+    if bbox_min_x >= bbox_max_x || bbox_min_y >= bbox_max_y {
+        return grid;
+    }
+
+    let mut x = bbox_min_x;
+    while x < bbox_max_x {
+        let mut y = bbox_min_y;
+        while y < bbox_max_y {
+            // Calculate the top-right corner of the current cell
+            // Clip to the bounding box's maximum x and y if necessary
+            let current_cell_max_x = f64::min(x + cell_width, bbox_max_x);
+            let current_cell_max_y = f64::min(y + cell_height, bbox_max_y);
+
+            // Create the rectangle for the current cell
+            let cell_rect = geo::Rect::new(
+                geo::Coord { x, y },
+                geo::Coord {
+                    x: current_cell_max_x,
+                    y: current_cell_max_y,
+                },
+            );
+
+            // Add the cell to the grid
+            grid.push(cell_rect);
+
+            // Move the y-cursor to the start of the next row
+            y += cell_height;
+        }
+        // Move the x-cursor to the start of the next column
+        x += cell_width;
+    }
+
+    grid
+}
+
 #[allow(unused_imports)]
 mod tests {
     use super::*;
@@ -277,6 +428,238 @@ mod tests {
     use geojson::{Feature, FeatureCollection, Value};
     use ordered_float::OrderedFloat;
     use std::collections::HashSet;
+
+    // Helper to create Rects more concisely in tests
+    #[allow(unused)]
+    fn r(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Rect {
+        Rect::new(Coord { x: min_x, y: min_y }, Coord { x: max_x, y: max_y })
+    }
+    #[test]
+    fn test_create_square_grid_exact_fit_single_cell() {
+        let bbox = r(0.0, 0.0, 200.0, 200.0);
+        let cell_width = 200.0;
+        let cell_height = 200.0;
+
+        let expected_grid = vec![r(0.0, 0.0, 200.0, 200.0)];
+
+        let grid = create_square_grid(bbox, cell_width, cell_height);
+        assert_eq!(grid.len(), expected_grid.len());
+        assert_eq!(grid, expected_grid);
+    }
+
+    #[test]
+    fn test_create_square_grid_exact_fit_multiple_cells() {
+        let bbox = r(0.0, 0.0, 400.0, 400.0);
+        let cell_width = 200.0;
+        let cell_height = 200.0;
+
+        let expected_grid = vec![
+            r(0.0, 0.0, 200.0, 200.0),
+            r(0.0, 200.0, 200.0, 400.0),
+            r(200.0, 0.0, 400.0, 200.0),
+            r(200.0, 200.0, 400.0, 400.0),
+        ];
+
+        let grid = create_square_grid(bbox, cell_width, cell_height);
+
+        // Sort both vectors for reliable comparison, as the order might depend on loop implementation
+        let mut grid_sorted = grid;
+        grid_sorted.sort_by(|a, b| {
+            a.min()
+                .x
+                .partial_cmp(&b.min().x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(
+                    a.min()
+                        .y
+                        .partial_cmp(&b.min().y)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+        });
+        let mut expected_grid_sorted = expected_grid;
+        expected_grid_sorted.sort_by(|a, b| {
+            a.min()
+                .x
+                .partial_cmp(&b.min().x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(
+                    a.min()
+                        .y
+                        .partial_cmp(&b.min().y)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+        });
+
+        assert_eq!(grid_sorted.len(), expected_grid_sorted.len());
+        assert_eq!(grid_sorted, expected_grid_sorted);
+    }
+
+    #[test]
+    fn test_create_square_grid_clipping_required() {
+        let bbox = r(0.0, 0.0, 450.0, 350.0);
+        let cell_width = 200.0;
+        let cell_height = 200.0;
+
+        let expected_grid = vec![
+            // Row 1 (y=0)
+            r(0.0, 0.0, 200.0, 200.0),
+            r(200.0, 0.0, 400.0, 200.0),
+            r(400.0, 0.0, 450.0, 200.0), // Clipped x
+            // Row 2 (y=200)
+            r(0.0, 200.0, 200.0, 350.0),   // Clipped y
+            r(200.0, 200.0, 400.0, 350.0), // Clipped y
+            r(400.0, 200.0, 450.0, 350.0), // Clipped x and y
+        ];
+
+        let grid = create_square_grid(bbox, cell_width, cell_height);
+
+        // Sort both vectors for reliable comparison
+        let mut grid_sorted = grid;
+        grid_sorted.sort_by(|a, b| {
+            a.min()
+                .x
+                .partial_cmp(&b.min().x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(
+                    a.min()
+                        .y
+                        .partial_cmp(&b.min().y)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+        });
+        let mut expected_grid_sorted = expected_grid;
+        expected_grid_sorted.sort_by(|a, b| {
+            a.min()
+                .x
+                .partial_cmp(&b.min().x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(
+                    a.min()
+                        .y
+                        .partial_cmp(&b.min().y)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+        });
+
+        assert_eq!(grid_sorted.len(), expected_grid_sorted.len());
+        assert_eq!(grid_sorted, expected_grid_sorted);
+    }
+
+    #[test]
+    fn test_create_square_grid_bbox_smaller_than_cell() {
+        let bbox = r(10.0, 20.0, 50.0, 70.0);
+        let cell_width = 200.0;
+        let cell_height = 200.0;
+
+        // Should result in a single cell clipped to the bbox
+        let expected_grid = vec![r(10.0, 20.0, 50.0, 70.0)];
+
+        let grid = create_square_grid(bbox, cell_width, cell_height);
+        assert_eq!(grid.len(), expected_grid.len());
+        assert_eq!(grid, expected_grid);
+    }
+
+    #[test]
+    fn test_create_square_grid_zero_cell_width() {
+        let bbox = r(0.0, 0.0, 200.0, 200.0);
+        let cell_width = 0.0;
+        let cell_height = 200.0;
+
+        let expected_grid: Vec<Rect> = vec![]; // Should return empty grid
+
+        let grid = create_square_grid(bbox, cell_width, cell_height);
+        assert_eq!(grid.len(), expected_grid.len());
+        assert_eq!(grid, expected_grid);
+    }
+
+    #[test]
+    fn test_create_square_grid_zero_cell_height() {
+        let bbox = r(0.0, 0.0, 200.0, 200.0);
+        let cell_width = 200.0;
+        let cell_height = 0.0;
+
+        let expected_grid: Vec<Rect> = vec![]; // Should return empty grid
+
+        let grid = create_square_grid(bbox, cell_width, cell_height);
+        assert_eq!(grid.len(), expected_grid.len());
+        assert_eq!(grid, expected_grid);
+    }
+
+    #[test]
+    fn test_create_square_grid_zero_bbox_area() {
+        let bbox = r(0.0, 0.0, 0.0, 0.0); // Point-like bbox
+        let cell_width = 10.0;
+        let cell_height = 10.0;
+
+        let expected_grid: Vec<Rect> = vec![]; // Should return empty grid
+
+        let grid = create_square_grid(bbox, cell_width, cell_height);
+        assert_eq!(grid.len(), expected_grid.len());
+        assert_eq!(grid, expected_grid);
+    }
+
+    #[test]
+    fn test_create_square_grid_negative_coords() {
+        let bbox = r(-100.0, -100.0, 100.0, 100.0);
+        let cell_width = 50.0;
+        let cell_height = 50.0;
+
+        let expected_grid = vec![
+            // Row 1 (y=-100)
+            r(-100.0, -100.0, -50.0, -50.0),
+            r(-50.0, -100.0, 0.0, -50.0),
+            r(0.0, -100.0, 50.0, -50.0),
+            r(50.0, -100.0, 100.0, -50.0),
+            // Row 2 (y=-50)
+            r(-100.0, -50.0, -50.0, 0.0),
+            r(-50.0, -50.0, 0.0, 0.0),
+            r(0.0, -50.0, 50.0, 0.0),
+            r(50.0, -50.0, 100.0, 0.0),
+            // Row 3 (y=0)
+            r(-100.0, 0.0, -50.0, 50.0),
+            r(-50.0, 0.0, 0.0, 50.0),
+            r(0.0, 0.0, 50.0, 50.0),
+            r(50.0, 0.0, 100.0, 50.0),
+            // Row 4 (y=50)
+            r(-100.0, 50.0, -50.0, 100.0),
+            r(-50.0, 50.0, 0.0, 100.0),
+            r(0.0, 50.0, 50.0, 100.0),
+            r(50.0, 50.0, 100.0, 100.0),
+        ];
+
+        let grid = create_square_grid(bbox, cell_width, cell_height);
+
+        // Sort both vectors for reliable comparison
+        let mut grid_sorted = grid;
+        grid_sorted.sort_by(|a, b| {
+            a.min()
+                .x
+                .partial_cmp(&b.min().x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(
+                    a.min()
+                        .y
+                        .partial_cmp(&b.min().y)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+        });
+        let mut expected_grid_sorted = expected_grid;
+        expected_grid_sorted.sort_by(|a, b| {
+            a.min()
+                .x
+                .partial_cmp(&b.min().x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(
+                    a.min()
+                        .y
+                        .partial_cmp(&b.min().y)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+        });
+
+        assert_eq!(grid_sorted.len(), expected_grid_sorted.len());
+        assert_eq!(grid_sorted, expected_grid_sorted);
+    }
 
     // --- Helper for comparing polygon equality in tests ---
     // Reuse the function defined in the main module for canonical representation
@@ -404,11 +787,11 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_convex_boundingboxes_features_with_insufficient_points_produce_empty() {
+    fn test_collect_convex_boundingboxes_features_with_insufficient_points_produce_bboxes() {
         let featurecollection = FeatureCollection {
             bbox: None,
             features: vec![
-                // Point in Germany (1 point < 3)
+                // Point in Germany (1 point -> bounding box)
                 Feature {
                     bbox: None,
                     geometry: Some(geojson::Geometry {
@@ -420,7 +803,7 @@ mod tests {
                     properties: None,
                     foreign_members: None,
                 },
-                // LineString in Germany (2 points < 3)
+                // LineString in Germany (2 points -> bounding box)
                 Feature {
                     bbox: None,
                     geometry: Some(geojson::Geometry {
@@ -432,7 +815,7 @@ mod tests {
                     properties: None,
                     foreign_members: None,
                 },
-                // LineString in Germany (2 identical points < 3)
+                // LineString in Germany (2 identical points -> should be skipped)
                 Feature {
                     bbox: None,
                     geometry: Some(geojson::Geometry {
@@ -444,7 +827,7 @@ mod tests {
                     properties: None,
                     foreign_members: None,
                 },
-                // MultiPoint in Germany (2 points < 3)
+                // MultiPoint in Germany (2 points -> bounding box)
                 Feature {
                     bbox: None,
                     geometry: Some(geojson::Geometry {
@@ -456,7 +839,7 @@ mod tests {
                     properties: None,
                     foreign_members: None,
                 },
-                // Polygon in Germany with only 2 points in exterior ring (invalid geojson, but test handling)
+                // Polygon in Germany with only 2 unique points (invalid geojson, should produce bounding box)
                 Feature {
                     bbox: None,
                     geometry: Some(geojson::Geometry {
@@ -477,10 +860,16 @@ mod tests {
         };
         let result = collect_convex_boundingboxes(&featurecollection);
         assert!(result.is_ok());
+        let hulls = result.unwrap();
+
+        // We expect 2 unique bounding boxes:
+        // 1. Point at [10.0, 50.0]
+        // 2. Box from [10.0, 50.0] to [11.0, 51.0] (shared by LineString, MultiPoint, and Polygon)
+        // The LineString with identical points should be skipped
         assert_eq!(
-            result.unwrap().len(),
-            0,
-            "Expected empty result when all features have insufficient points"
+            hulls.len(),
+            2,
+            "Expected two unique bounding boxes from features with insufficient points"
         );
     }
 
@@ -876,7 +1265,7 @@ mod tests {
         let featurecollection = FeatureCollection {
             bbox: None,
             features: vec![
-                // Valid LineString in Germany -> Hull A
+                // Valid LineString in Germany -> Hull A (convex hull)
                 Feature {
                     bbox: None,
                     geometry: Some(geojson::Geometry {
@@ -908,41 +1297,7 @@ mod tests {
                     properties: None,
                     foreign_members: None,
                 },
-                // Valid Polygon in Germany -> Hull B (different from A)
-                Feature {
-                    bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::Polygon(vec![vec![
-                            vec![12.0, 52.0],
-                            vec![13.0, 52.0],
-                            vec![13.0, 53.0],
-                            vec![12.0, 53.0],
-                            vec![12.0, 52.0],
-                        ]]),
-                        foreign_members: None,
-                    }),
-                    id: None,
-                    properties: None,
-                    foreign_members: None,
-                },
-                // Valid LineString (same as first) in Germany -> Duplicate of Hull A
-                Feature {
-                    bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![
-                            vec![10.0, 50.0],
-                            vec![11.0, 50.0],
-                            vec![10.5, 51.0],
-                        ]),
-                        foreign_members: None,
-                    }),
-                    id: None,
-                    properties: None,
-                    foreign_members: None,
-                },
-                // Invalid Point (< 3 points) in Germany -> Skipped
+                // Valid Point in Germany -> Hull B (bounding box)
                 Feature {
                     bbox: None,
                     geometry: Some(geojson::Geometry {
@@ -954,12 +1309,12 @@ mod tests {
                     properties: None,
                     foreign_members: None,
                 },
-                // Unsupported type -> Skipped
+                // Valid LineString in Germany (2 points) -> Hull C (bounding box)
                 Feature {
                     bbox: None,
                     geometry: Some(geojson::Geometry {
                         bbox: None,
-                        value: Value::GeometryCollection(vec![]),
+                        value: Value::LineString(vec![vec![10.0, 50.0], vec![11.0, 51.0]]),
                         foreign_members: None,
                     }),
                     id: None,
@@ -973,26 +1328,31 @@ mod tests {
         assert!(result.is_ok());
         let hulls = result.unwrap();
 
-        // Expecting 2 unique hulls: one from the LineString triangle, one from the Polygon square
-        assert_eq!(hulls.len(), 2, "Expected two unique hulls from mixed input");
+        assert_eq!(
+            hulls.len(),
+            3,
+            "Expected three unique hulls from mixed input: one convex hull and two bounding boxes"
+        );
 
-        // Optional: Verify the actual hulls returned match the two expected geometries
-        let expected_hull_a_vertices = vec![
-            Coord { x: 10.0, y: 50.0 },
-            Coord { x: 11.0, y: 50.0 },
-            Coord { x: 10.5, y: 51.0 },
-            Coord { x: 10.0, y: 50.0 },
-        ];
-        let expected_hull_a = Polygon::new(LineString::new(expected_hull_a_vertices), vec![]);
+        // Create expected hulls
+        // Hull A: Convex hull from 3-point LineString
+        let expected_hull_a = Polygon::new(
+            LineString::new(vec![
+                Coord { x: 10.0, y: 50.0 },
+                Coord { x: 11.0, y: 50.0 },
+                Coord { x: 10.5, y: 51.0 },
+                Coord { x: 10.0, y: 50.0 },
+            ]),
+            vec![],
+        );
 
-        let expected_hull_b_vertices = vec![
-            Coord { x: 12.0, y: 52.0 },
-            Coord { x: 13.0, y: 52.0 },
-            Coord { x: 13.0, y: 53.0 },
-            Coord { x: 12.0, y: 53.0 },
-            Coord { x: 12.0, y: 52.0 },
-        ];
-        let expected_hull_b = Polygon::new(LineString::new(expected_hull_b_vertices), vec![]);
+        // Hull B: Bounding box from single point
+        let expected_hull_b =
+            Rect::new(Coord { x: 10.0, y: 50.0 }, Coord { x: 10.0, y: 50.0 }).to_polygon();
+
+        // Hull C: Bounding box from 2-point LineString
+        let expected_hull_c =
+            Rect::new(Coord { x: 10.0, y: 50.0 }, Coord { x: 11.0, y: 51.0 }).to_polygon();
 
         // Collect canonical representations of returned hulls
         let returned_canonical: HashSet<Vec<(OrderedFloat<f64>, OrderedFloat<f64>)>> = hulls
@@ -1005,8 +1365,8 @@ mod tests {
             HashSet::new();
         expected_canonical.insert(canonical_hull_unique_sorted_points(&expected_hull_a));
         expected_canonical.insert(canonical_hull_unique_sorted_points(&expected_hull_b));
+        expected_canonical.insert(canonical_hull_unique_sorted_points(&expected_hull_c));
 
-        // Assert the sets of canonical representations are equal
         assert_eq!(
             returned_canonical, expected_canonical,
             "The set of returned hulls does not match the set of expected hulls"

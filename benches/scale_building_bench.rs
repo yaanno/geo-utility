@@ -91,37 +91,31 @@ fn bench_10_000k_features(c: &mut Criterion) {
 
 criterion_group!(
     name = benches_1k;
-    config = Criterion::default().sample_size(50); // Reduce samples
-    targets = bench_1k_features                           // List the benchmark function(s) for this group
+    config = Criterion::default().sample_size(50);
+    targets = bench_1k_features
 );
 
-// For 10k features, the warning was less specific about reduction, but let's keep default or slightly reduced if needed
-// Warning was "increase target time to 24.3s" or reduce sample count. Let's stick with default 100 samples here unless it's too long.
 criterion_group!(
     name = benches_10k;
-    // Use default settings (100 samples, 5s target time)
-    config = Criterion::default().sample_size(100); // Explicitly 100 samples
+    config = Criterion::default().sample_size(100);
     targets = bench_10k_features
 );
 
-// For 100k features, warning suggested sample count 10 (or increase time to 27.7s)
 criterion_group!(
     name = benches_100k;
-    config = Criterion::default().sample_size(10); // Reduce samples significantly
+    config = Criterion::default().sample_size(10);
     targets = bench_100k_features
 );
 
-// For 100k features, warning suggested sample count 10 (or increase time to 27.7s)
 criterion_group!(
     name = benches_1000k;
-    config = Criterion::default().sample_size(10); // Reduce samples significantly
+    config = Criterion::default().sample_size(10);
     targets = bench_1000k_features
 );
 
-// For 100k features, warning suggested sample count 10 (or increase time to 27.7s)
 criterion_group!(
     name = benches_10_000k;
-    config = Criterion::default().sample_size(10); // Reduce samples significantly
+    config = Criterion::default().sample_size(10);
     targets = bench_10_000k_features
 );
 
