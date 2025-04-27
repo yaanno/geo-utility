@@ -1,13 +1,17 @@
+mod collect_bounding_boxes;
 mod collect_convex_boundingboxes;
 mod extend_features;
 mod extend_straight_line;
 mod generate_synthetic_complex_featurecollection;
 mod generate_synthetic_featurecollection;
 mod generate_synthetic_linestrings;
+mod geometry;
 mod pick_features_by_boundingbox;
 mod process_vertices_and_bends;
 mod remove_near_points;
 mod scale_buildings;
+mod utils;
+pub use collect_bounding_boxes::collect_bounding_boxes;
 pub use collect_convex_boundingboxes::collect_convex_boundingboxes;
 pub use extend_features::extend_features;
 pub use extend_straight_line::extend_straight_line;
