@@ -1,4 +1,4 @@
-use geo::{BoundingRect, Coord, Rect};
+use geo::{BoundingRect, Coord, Intersects, Rect};
 
 const GERMANY_BBOX: [f64; 4] = [
     5.866211,  // Min longitude
@@ -22,6 +22,34 @@ pub fn is_coordinate_in_germany(coord: &[f64]) -> bool {
         && coord[0] <= GERMANY_BBOX[2]
         && coord[1] >= GERMANY_BBOX[1]
         && coord[1] <= GERMANY_BBOX[3]
+}
+
+pub fn is_boundingbox_in_germany(coords: &Vec<f64>) -> bool {
+    if coords.len() < 4 {
+        return false;
+    }
+    let coords = Rect::new(
+        Coord {
+            x: coords[0],
+            y: coords[1],
+        },
+        Coord {
+            x: coords[2],
+            y: coords[3],
+        },
+    );
+    let germany_rect = Rect::new(
+        Coord {
+            x: GERMANY_BBOX[0],
+            y: GERMANY_BBOX[1],
+        },
+        Coord {
+            x: GERMANY_BBOX[2],
+            y: GERMANY_BBOX[3],
+        },
+    );
+
+    coords.intersects(&germany_rect)
 }
 
 #[allow(dead_code)]

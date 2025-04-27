@@ -1,12 +1,10 @@
-use std::collections::{HashMap, HashSet};
-
-use crate::geometry::{Rectangle, RectangleWithId};
-use crate::utils::{expand_bounding_box, is_coordinate_in_germany};
+use crate::geometry::Rectangle;
+use crate::grouping::{group_rects_by_overlap, merge_components};
+use crate::utils::{expand_bounding_box, is_boundingbox_in_germany, is_coordinate_in_germany};
 use geo::geometry::LineString as GeoLineString;
-use geo::{BoundingRect, Coord, Intersects, MultiPoint, Point, Rect};
+use geo::{BoundingRect, Coord, MultiPoint, Point};
 use ordered_float::OrderedFloat;
-use rstar::{RTree, RTreeObject};
-use union_find::{QuickUnionUf, UnionBySize, UnionFind};
+use std::collections::HashSet;
 
 /**
  * Collects bounding boxes from a geojson FeatureCollection.
@@ -26,11 +24,7 @@ pub fn collect_bounding_boxes(
 ) -> Vec<Rectangle> {
     let initial_geo_rects = collect_initial_buffered_rects(featurecollection, radius);
 
-    let rectangles: Vec<Rectangle> = initial_geo_rects
-        .clone()
-        .into_iter()
-        .map(Rectangle::from)
-        .collect();
+    let rectangles: Vec<Rectangle> = initial_geo_rects.into_iter().map(Rectangle::from).collect();
 
     let uf = group_rects_by_overlap(&rectangles);
     let merged_rectangles: Vec<Rectangle> = merge_components(&rectangles, uf);
@@ -52,35 +46,12 @@ fn collect_initial_buffered_rects(
     radius: f64,
 ) -> Vec<geo::Rect> {
     let mut bounding_boxes: Vec<geo::Rect> = Vec::new();
-    let germany_rect: Rect = Rect::new(
-        Coord {
-            x: 5.866211,
-            y: 47.270111,
-        },
-        Coord {
-            x: 15.013611,
-            y: 55.058333,
-        },
-    );
 
     for feature in &featurecollection.features {
         // 0. Early Filtering using Feature Bounding Box
         if let Some(feature_bbox_value) = &feature.bbox {
-            if feature_bbox_value.len() >= 4 {
-                let feature_rect = Rect::new(
-                    Coord {
-                        x: feature_bbox_value[0],
-                        y: feature_bbox_value[1],
-                    },
-                    Coord {
-                        x: feature_bbox_value[2],
-                        y: feature_bbox_value[3],
-                    },
-                );
-
-                if !feature_rect.intersects(&germany_rect) {
-                    continue;
-                }
+            if !is_boundingbox_in_germany(feature_bbox_value) {
+                continue;
             }
         }
 
@@ -160,98 +131,6 @@ fn collect_initial_buffered_rects(
     bounding_boxes
 }
 
-/**
- * Groups rectangles by overlap using an R-tree and Union-Find.
- *
- * # Arguments
- * * `rectangles` - The rectangles to group.
- *
- * # Returns
- * A Union-Find structure representing the groups.
- */
-fn group_rects_by_overlap(rectangles: &[Rectangle]) -> QuickUnionUf<UnionBySize> {
-    let rtree_data: Vec<RectangleWithId> = rectangles
-        .into_iter()
-        .enumerate()
-        .map(|(i, rect)| RectangleWithId(rect.clone(), i))
-        .collect();
-
-    let tree = RTree::bulk_load(rtree_data);
-
-    let mut uf = QuickUnionUf::<UnionBySize>::new(rectangles.len());
-    for (i, rect) in rectangles.iter().enumerate() {
-        // Query the R-tree to find rectangles overlapping the current 'rect'
-        // locate_in_envelope_intersecting returns iter of &(Rectangle, usize)
-        for RectangleWithId(_overlapping_rect, j) in
-            tree.locate_in_envelope_intersecting(&rect.envelope())
-        {
-            // 'candidate_tuple_ref' is &(Rectangle, usize)
-            // 'overlapping_rect' is &Rectangle
-            // 'j' is usize (the original index of the overlapping rectangle)
-
-            // We found an overlap between rectangle 'i' and rectangle 'j'.
-            // Ensure we don't try to union an item with itself.
-            if i != *j {
-                // Perform the union operation in the Union-Find structure.
-                // The union_find crate's union method merges the sets containing i and j.
-                // It's efficient even if i and j are already in the same set.
-                uf.union(i, *j);
-            }
-        }
-    }
-    uf
-}
-
-/**
- * Merges rectangles in each component to compute the overall bounding box.
- *
- * # Arguments
- * * `rectangles` - The rectangles to merge.
- * * `uf` - The Union-Find structure representing the groups.
- *
- * # Returns
- * A vector of merged rectangles.
- */
-fn merge_components(rectangles: &[Rectangle], mut uf: QuickUnionUf<UnionBySize>) -> Vec<Rectangle> {
-    let capacity = rectangles.len();
-    // CHANGE: Store owned Rectangle values instead of references
-    let mut components: HashMap<usize, Vec<Rectangle>> = HashMap::with_capacity(capacity);
-
-    for (i, rect) in rectangles.iter().enumerate() {
-        // Iterating over &Rectangle here
-        let root = uf.find(i);
-
-        let group_for_root = components.entry(root).or_default();
-        // CHANGE: Push a *clone* of the rectangle into the owned vector
-        group_for_root.push(rect.clone()); // *** Changed to push(rect.clone()) ***
-    }
-
-    // Now merge rectangles in each component to compute the overall bounding box.
-    let merged_rectangles: Vec<Rectangle> = components
-        .into_iter()
-        .map(|(_root, group)| {
-            let (min_x, min_y, max_x, max_y) = group.iter().fold(
-                // Iterating over &Rectangle here
-                (
-                    f64::INFINITY,
-                    f64::INFINITY,
-                    f64::NEG_INFINITY,
-                    f64::NEG_INFINITY,
-                ),
-                |(min_x, min_y, max_x, max_y), r| {
-                    (
-                        min_x.min(r.min().x),
-                        min_y.min(r.min().y),
-                        max_x.max(r.max().x),
-                        max_y.max(r.max().y),
-                    )
-                },
-            );
-            Rectangle::from_corners((min_x, min_y), (max_x, max_y))
-        })
-        .collect();
-    merged_rectangles
-}
 #[cfg(test)]
 mod tests {
     use super::*;

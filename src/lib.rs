@@ -6,6 +6,7 @@ mod generate_synthetic_complex_featurecollection;
 mod generate_synthetic_featurecollection;
 mod generate_synthetic_linestrings;
 mod geometry;
+mod grouping;
 mod pick_features_by_boundingbox;
 mod process_vertices_and_bends;
 mod remove_near_points;
