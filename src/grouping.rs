@@ -65,13 +65,7 @@ pub fn merge_components(
  * A Union-Find structure representing the groups.
  */
 pub fn group_rects_by_overlap(rectangles: &[Rectangle]) -> QuickUnionUf<UnionBySize> {
-    let rtree_data: Vec<RectangleWithId> = rectangles
-        .into_iter()
-        .enumerate()
-        .map(|(i, rect)| RectangleWithId(rect.clone(), i))
-        .collect();
-
-    let tree = RTree::bulk_load(rtree_data);
+    let tree = index_rectangles(rectangles);
 
     let mut uf = QuickUnionUf::<UnionBySize>::new(rectangles.len());
     for (i, rect) in rectangles.iter().enumerate() {
@@ -95,4 +89,24 @@ pub fn group_rects_by_overlap(rectangles: &[Rectangle]) -> QuickUnionUf<UnionByS
         }
     }
     uf
+}
+
+/**
+ * Indexes rectangles using an R-tree.
+ *
+ * # Arguments
+ * `rectangles` - The rectangles to index.
+ *
+ * # Returns
+ * An R-tree containing the indexed rectangles.
+ */
+pub fn index_rectangles(rectangles: &[Rectangle]) -> RTree<RectangleWithId> {
+    let rtree_data: Vec<RectangleWithId> = rectangles
+        .into_iter()
+        .enumerate()
+        .map(|(i, rect)| RectangleWithId(rect.clone(), i))
+        .collect();
+
+    let tree = RTree::bulk_load(rtree_data);
+    tree
 }

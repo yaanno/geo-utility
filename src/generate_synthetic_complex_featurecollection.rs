@@ -57,7 +57,7 @@ pub fn generate_synthetic_complex_featurecollection(
     let mut features: Vec<Feature> = Vec::with_capacity(num_features); // Pre-allocate capacity
 
     // Define the types we want to generate (0 to 5)
-    const NUM_GEOM_TYPES: usize = 6;
+    const NUM_GEOM_TYPES: usize = 2;
 
     for i in 0..num_features {
         // Randomly select a geometry type (0..NUM_GEOM_TYPES)

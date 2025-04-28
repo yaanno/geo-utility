@@ -86,7 +86,7 @@ pub fn expand_bounding_box(bbox: &Rect, radius: f64) -> Rect {
 /// * `area_length` - The length of the area to which the bounding box should be extended.
 /// # Returns
 /// The extended bounding box.
-pub fn extend_bounding_box(bbox: &geo::Rect, area_length: f64) -> geo::Rect {
+pub fn extend_bounding_box(bbox: &Rect, area_length: f64) -> Rect {
     let width = bbox.width();
     let height = bbox.height();
 
@@ -107,12 +107,12 @@ pub fn extend_bounding_box(bbox: &geo::Rect, area_length: f64) -> geo::Rect {
     let new_max_x = bbox.max().x + length_width / 2.0;
     let new_max_y = bbox.max().y + length_height / 2.0;
 
-    geo::Rect::new(
-        geo::Coord {
+    Rect::new(
+        Coord {
             x: new_min_x,
             y: new_min_y,
         },
-        geo::Coord {
+        Coord {
             x: new_max_x,
             y: new_max_y,
         },
@@ -120,14 +120,13 @@ pub fn extend_bounding_box(bbox: &geo::Rect, area_length: f64) -> geo::Rect {
 }
 
 #[allow(dead_code)]
-pub fn convert_polygons_to_bounding_boxes(polygons: Vec<geo::Polygon>) -> Vec<geo::Rect> {
+pub fn convert_polygons_to_bounding_boxes(polygons: Vec<geo::Polygon>) -> Vec<Rect> {
     polygons
         .into_iter()
         .map(|poly| poly.bounding_rect().unwrap())
         .collect()
 }
 
-#[allow(dead_code)]
 /// Creates a square grid from a bounding box with specified cell dimensions.
 ///
 /// # Arguments
@@ -136,7 +135,7 @@ pub fn convert_polygons_to_bounding_boxes(polygons: Vec<geo::Polygon>) -> Vec<ge
 /// * `cell_height` - The height of each cell in the grid.
 /// # Returns
 /// A vector of rectangles representing the grid cells.
-pub fn create_square_grid(bbox: geo::Rect, cell_width: f64, cell_height: f64) -> Vec<geo::Rect> {
+pub fn create_square_grid(bbox: Rect, cell_width: f64, cell_height: f64) -> Vec<Rect> {
     let mut grid = Vec::new();
 
     // Ensure cell dimensions are positive to avoid infinite loops
@@ -164,9 +163,9 @@ pub fn create_square_grid(bbox: geo::Rect, cell_width: f64, cell_height: f64) ->
             let current_cell_max_y = f64::min(y + cell_height, bbox_max_y);
 
             // Create the rectangle for the current cell
-            let cell_rect = geo::Rect::new(
-                geo::Coord { x, y },
-                geo::Coord {
+            let cell_rect = Rect::new(
+                Coord { x, y },
+                Coord {
                     x: current_cell_max_x,
                     y: current_cell_max_y,
                 },
