@@ -10,9 +10,9 @@ use std::collections::HashSet;
  * Collects bounding boxes from a geojson FeatureCollection.
  *
  * # Arguments
- * * `featurecollection` - The FeatureCollection from which to collect bounding box polygons.
- * * `radius` - The radius for expanding the bounding boxes.
- * * `_combine` - Whether to combine overlapping bounding boxes.
+ *  `featurecollection` - The FeatureCollection from which to collect bounding box polygons.
+ *  `radius` - The radius for expanding the bounding boxes.
+ *  `_combine` - Whether to combine overlapping bounding boxes.
  *
  * # Returns
  * A vector of bounding boxes.
@@ -35,8 +35,8 @@ pub fn collect_bounding_boxes(
  * Collects initial buffered rectangles from a geojson FeatureCollection.
  *
  * # Arguments
- * * `featurecollection` - The FeatureCollection from which to collect bounding box polygons.
- * * `radius` - The radius for expanding the bounding boxes.
+ *  `featurecollection` - The FeatureCollection from which to collect bounding box polygons.
+ *  `radius` - The radius for expanding the bounding boxes.
  *
  * # Returns
  * A vector of buffered rectangles.

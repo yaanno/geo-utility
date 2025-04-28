@@ -11,7 +11,7 @@ use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 * `uf` - The Union-Find structure representing the groups.
 *
 * # Returns
-* A vector of merged rectangles.
+* A vector of merged rectangles
 */
 pub fn merge_components(
     rectangles: &[Rectangle],

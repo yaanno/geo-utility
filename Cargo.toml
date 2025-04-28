@@ -33,3 +33,8 @@ harness = false
 name = "collect_convex_bench"
 path = "benches/collect_convex_bench.rs"
 harness = false
+
+[[bench]]
+name = "collect_bounding_bench"
+path = "benches/collect_bounding_bench.rs"
+harness = false

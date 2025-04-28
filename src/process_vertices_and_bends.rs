@@ -51,10 +51,10 @@ pub fn process_vertices_and_bends(
                     }
 
                     // --- Function to generate the four lines at a given point with a specific direction ---
-                    let mut generate_lines_at_point = |current_point: Point<f64>,
-                                                       forward_direction: Point<f64>, // Vector for forward/orthogonal
-                                                       backward_direction: Point<f64>, // Vector for backward extension
-                                                       
+                    let mut generate_lines_at_point = |
+                    current_point: Point<f64>,
+                    forward_direction: Point<f64>, // Vector for forward/orthogonal
+                    backward_direction: Point<f64>, // Vector for backward extension
                     | {
                         // Check if the forward direction vector has a non-zero length
                         let forward_length = forward_direction.x().hypot(forward_direction.y());
@@ -210,9 +210,7 @@ pub fn process_vertices_and_bends(
                                 // At bends, use the outgoing segment direction (v_out) for forward/orthogonal
                                 // and the incoming segment direction (v_in) for backward.
                                 generate_lines_at_point(
-                                    p_current,
-                                    v_out,
-                                    v_in,
+                                    p_current, v_out, v_in,
                                     // &feature.properties,
                                 );
                             }
