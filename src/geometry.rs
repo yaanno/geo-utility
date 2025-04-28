@@ -15,6 +15,11 @@ impl Rectangle {
     pub fn from_corners(min: (f64, f64), max: (f64, f64)) -> Self {
         Self(Rect::new(min, max))
     }
+
+    /// Convert to geo::Rect<f64>
+    pub fn to_geo_rect(&self) -> Rect<f64> {
+        self.0
+    }
 }
 
 // Conversion from geo::Rect<f64> to Rectangle.
