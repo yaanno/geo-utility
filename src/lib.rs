@@ -25,3 +25,4 @@ pub use process_vertices_and_bends::process_vertices_and_bends;
 pub use remove_near_points::remove_near_points;
 pub use scale_buildings::scale_buildings;
 pub use bounding_box_test::calculate_bounding_box;
+pub use collect_bounding_boxes::Radius;

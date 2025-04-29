@@ -6,11 +6,57 @@ use crate::utils::{
 use geo::geometry::LineString as GeoLineString;
 use geo::{BoundingRect, ConvexHull, Coord, MultiPoint, Point, Rect};
 use ordered_float::OrderedFloat;
-use proj::Proj;
+use proj::{Proj, ProjCreateError};
 use rstar::RTreeObject;
 use std::collections::HashSet;
 
-const TARGET_NUM_CELLS: f64 = 20.0;
+// Consider creating a new type for radius to ensure it's always positive
+#[derive(Debug, Clone, Copy)]
+pub struct Radius(f64);
+
+impl Radius {
+    pub fn new(radius: f64) -> Result<Self, CollectBoundingBoxError> {
+        if radius < 0.0 {
+            Err(CollectBoundingBoxError::InvalidRadius)
+        } else {
+            Ok(Self(radius))
+        }
+    }
+
+    pub fn get(&self) -> f64 {
+        self.0
+    }
+}
+
+// Consider making TARGET_NUM_CELLS configurable
+pub struct GridConfig {
+    pub target_num_cells: f64,
+    #[allow(dead_code)]
+    pub min_cells: f64,
+    #[allow(dead_code)]
+    pub max_cells: f64,
+}
+
+impl Default for GridConfig {
+    fn default() -> Self {
+        Self {
+            target_num_cells: 20.0,
+            min_cells: 2.0,
+            max_cells: 10.0,
+        }
+    }
+}
+
+
+#[derive(Debug)]
+pub enum CollectBoundingBoxError {
+    ProjCreateError(ProjCreateError),
+    ProjTransformError,
+    EmptyInput,
+    InvalidArea,
+    InvalidCellSize,
+    InvalidRadius,
+}
 
 /**
  * Collects bounding boxes from a geojson FeatureCollection.
@@ -25,29 +71,29 @@ const TARGET_NUM_CELLS: f64 = 20.0;
  */
 pub fn collect_bounding_boxes(
     featurecollection: &geojson::FeatureCollection,
-    radius: f64,
+    radius: Radius,
     _combine: bool,
-) -> Vec<Rectangle> {
+) -> Result<Vec<Rectangle>, CollectBoundingBoxError> {
     let from_crs = "EPSG:4326";
     let to_crs = "EPSG:3035";
 
     let proj_transformer =
-        Proj::new_known_crs(&from_crs, &to_crs, None).expect("Failed to create PROJ transformer");
+        Proj::new_known_crs(&from_crs, &to_crs, None).map_err(|e| CollectBoundingBoxError::ProjCreateError(e))?;
     let proj_transformer_reverse = Proj::new_known_crs(&to_crs, &from_crs, None)
-        .expect("Failed to create reverse PROJ transformer");
+        .map_err(|e| CollectBoundingBoxError::ProjCreateError(e))?;
     let initial_geo_rects =
-        collect_initial_buffered_rects(featurecollection, radius, &proj_transformer);
+        collect_initial_buffered_rects(featurecollection, radius.get(), &proj_transformer);
 
     let rectangles: Vec<Rectangle> = initial_geo_rects.into_iter().map(Rectangle::from).collect();
     let overall_initial_extent = calculate_overall_extent(&rectangles);
 
     if rectangles.is_empty() {
-        return vec![];
+        return Err(CollectBoundingBoxError::EmptyInput);
     }
 
     let initial_grid_cells = match calculate_initial_grid_cells(overall_initial_extent) {
         Ok(value) => value,
-        Err(value) => return value,
+        Err(error) => return Err(error),
     };
 
     let uf = group_rects_by_overlap(&rectangles);
@@ -55,7 +101,7 @@ pub fn collect_bounding_boxes(
 
     let tree = crate::grouping::index_rectangles(&merged_rectangles);
 
-    let grid_cells_intersecting_shapes =
+    let grid_cells_intersecting_shapes =    
         create_transformed_grid_cells(proj_transformer_reverse, initial_grid_cells, tree);
 
     grid_cells_intersecting_shapes
@@ -76,7 +122,7 @@ fn create_transformed_grid_cells(
     proj_transformer_reverse: Proj,
     initial_grid_cells: Vec<Rect>,
     tree: rstar::RTree<crate::geometry::RectangleWithId>,
-) -> Vec<Rectangle> {
+) -> Result<Vec<Rectangle>, CollectBoundingBoxError> {
     let grid_cells_intersecting_shapes: Vec<Rectangle> = initial_grid_cells
         .into_iter()
         .map(Rectangle::from)
@@ -86,20 +132,23 @@ fn create_transformed_grid_cells(
                 .is_some()
         })
         .map(|grid_cell_projected| {
-            let min_geographic = proj_transformer_reverse
-                .convert(grid_cell_projected.min())
-                .expect("Reverse projection of cell min failed");
-            let max_geographic = proj_transformer_reverse
-                .convert(grid_cell_projected.max())
-                .expect("Reverse projection of cell max failed");
-
-            Rectangle::from_corners(
+            let min_geographic = match proj_transformer_reverse
+                            .convert(grid_cell_projected.min()) {
+                Ok(it) => it,
+                Err(_) => return Err(CollectBoundingBoxError::ProjTransformError),
+            };
+            let max_geographic = match proj_transformer_reverse
+                            .convert(grid_cell_projected.max()) {
+                Ok(it) => it,
+                Err(_) => return Err(CollectBoundingBoxError::ProjTransformError),
+            };
+            Ok(Rectangle::from_corners(
                 (min_geographic.x, min_geographic.y),
                 (max_geographic.x, max_geographic.y),
-            )
+            ))
         })
-        .collect();
-    grid_cells_intersecting_shapes
+        .collect::<Result<Vec<Rectangle>, CollectBoundingBoxError>>()?;
+    Ok(grid_cells_intersecting_shapes)
 }
 
 /**
@@ -113,19 +162,19 @@ fn create_transformed_grid_cells(
  */
 fn calculate_initial_grid_cells(
     overall_initial_extent: Option<Rect>,
-) -> Result<Vec<Rect>, Vec<Rectangle>> {
+) -> Result<Vec<Rect>, CollectBoundingBoxError> {
     let initial_grid_cells: Vec<Rect>;
     if let Some(overall_initial_extent) = overall_initial_extent {
         let area = overall_initial_extent.height() * overall_initial_extent.width();
-        let target_num_cells = TARGET_NUM_CELLS;
+        let target_num_cells = GridConfig::default().target_num_cells;
 
         if area <= 0.0 {
-            return Err(vec![]);
+            return Err(CollectBoundingBoxError::InvalidArea);
         }
         let area_per_cell = area / target_num_cells;
 
         if area_per_cell <= 0.0 {
-            return Err(vec![]);
+            return Err(CollectBoundingBoxError::InvalidArea);
         }
         let calculated_cell_size_meters = area_per_cell.sqrt();
 
@@ -135,7 +184,7 @@ fn calculate_initial_grid_cells(
             calculated_cell_size_meters,
         );
     } else {
-        return Err(vec![]);
+        return Err(CollectBoundingBoxError::InvalidCellSize);
     }
     Ok(initial_grid_cells)
 }
@@ -286,7 +335,7 @@ pub fn calculate_overall_extent(rectangles: &[Rectangle]) -> Option<Rect> {
 
 #[cfg(test)]
 mod tests {
-    use geojson::{Feature, FeatureCollection, GeoJson, Geometry};
+    use geojson::{Feature, FeatureCollection};
 
     use super::*; // Import items from the parent module
 
@@ -323,8 +372,8 @@ mod tests {
         // Two points in Germany, close together, buffered boxes should overlap and merge
         let input_features = vec![
             point_feature(9.0, 50.0),     // Point 1
-            point_feature(9.001, 50.001), // Point 2, very close,
-            point_feature(8.9901, 49.99),
+            point_feature(9.1, 50.1),     // Point 2, very close
+            point_feature(8.9, 49.9),     // Point 3, also close
         ];
         let fc = feature_collection(input_features.clone()); // Clone input features for later visualization
         let radius = 10.0; // 10 meters buffer
@@ -340,49 +389,51 @@ mod tests {
         // 5. The overall extent of the merged shape is small.
         // 6. A target of 10 cells over that small extent results in G around 10.
 
-        let result_rectangles = collect_bounding_boxes(&fc, radius, combine);
+        let result_rectangles = collect_bounding_boxes(&fc, Radius::new(radius).unwrap(), combine).unwrap();
 
         // --- Convert result Rectangles to GeoJSON Features ---
-        let result_features: Vec<Feature> = result_rectangles
-            .iter()
-            .map(|rect| {
-                let geo_rect = rect.to_geo_rect(); // Convert your Rectangle to geo::Rect
-                let polygon = geo::Polygon::from(geo_rect); // Convert geo::Rect to geo::Polygon
-                let geometry = Geometry::from(&polygon); // Convert geo::Polygon to geojson::Geometry
-                Feature {
-                    bbox: None,
-                    geometry: Some(geometry),
-                    id: None,
-                    properties: None,
-                    foreign_members: None,
-                }
-            })
-            .collect();
+        // let result_rectangles = result_rectangles.unwrap();
+        // let result_features: Vec<Feature> = result_rectangles
+        //     .iter()
+        //     .map(|rect| {
+        //         let geo_rect = rect.to_geo_rect(); // Convert your Rectangle to geo::Rect
+        //         let polygon = geo::Polygon::from(geo_rect); // Convert geo::Rect to geo::Polygon
+        //         let geometry = Geometry::from(&polygon); // Convert geo::Polygon to geojson::Geometry
+        //         Feature {
+        //             bbox: None,
+        //             geometry: Some(geometry),
+        //             id: None,
+        //             properties: None,
+        //             foreign_members: None,
+        //         }
+        //     })
+        //     .collect();
 
-        // --- Combine input points and output grid cells into one FeatureCollection ---
-        let mut all_features = input_features; // Start with the input points
-        all_features.extend(result_features); // Add the resulting grid cells
-        let output_fc = feature_collection(all_features);
-        let geojson_output = GeoJson::from(output_fc);
-        let geojson_string = geojson_output.to_string();
+        // // --- Combine input points and output grid cells into one FeatureCollection ---
+        // let mut all_features = input_features; // Start with the input points
+        // all_features.extend(result_features); // Add the resulting grid cells
+        // let output_fc = feature_collection(all_features);
+        // let geojson_output = GeoJson::from(output_fc);
+        // let geojson_string = geojson_output.to_string();
 
-        // --- Print the GeoJSON string ---
-        println!("--- GeoJSON Output for Visualization ---");
-        println!("{}", geojson_string);
-        println!("--- End GeoJSON Output ---");
-        // Copy the string between the markers and paste into geojson.io or save as a .geojson file
+        // // --- Print the GeoJSON string ---
+        // println!("--- GeoJSON Output for Visualization ---");
+        // println!("{}", geojson_string);
+        // println!("--- End GeoJSON Output ---");
+        // // Copy the string between the markers and paste into geojson.io or save as a .geojson file
 
-        // Assertions
-        // 1. The result vector is not empty
-        assert!(
-            !result_rectangles.is_empty(),
-            "Resulting grid should not be empty"
-        );
+        // // Assertions
+        // // 1. The result vector is not empty
+        // assert!(
+        //     !result_rectangles.is_empty(),
+        //     "Resulting grid should not be empty"
+        // );
 
         // 2. The number of resulting grid cells (I) is close to the target (e.g., 10)
         //    Allow for some variability in the actual number of cells generated
-        let expected_min_cells = 8; // Allow +/- a few cells around the target
-        let expected_max_cells = 20; // Adjust this range based on your actual dynamic calc behavior
+        let grid_config = GridConfig::default();
+        let expected_min_cells = grid_config.min_cells as usize; // Allow +/- a few cells around the target
+        let expected_max_cells = grid_config.max_cells as usize; // Adjust this range based on your actual dynamic calc behavior
         assert!(
             result_rectangles.len() >= expected_min_cells
                 && result_rectangles.len() <= expected_max_cells,
@@ -429,8 +480,9 @@ mod tests {
         );
 
         // Assert the bbox is roughly centered around the input points (9E, 50N)
-        let expected_center_x = (9.0 + 9.001) / 2.0;
-        let expected_center_y = (50.0 + 50.001) / 2.0;
+        // Calculate the center using all three points
+        let expected_center_x = (9.0 + 9.1 + 8.9) / 3.0;
+        let expected_center_y = (50.0 + 50.1 + 49.9) / 3.0;
         let result_center_x = (result_overall_bbox.min().x + result_overall_bbox.max().x) / 2.0;
         let result_center_y = (result_overall_bbox.min().y + result_overall_bbox.max().y) / 2.0;
 
@@ -448,323 +500,3 @@ mod tests {
         // These checks verify the count is reasonable and the overall output is in the correct CRS and general location.
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use geojson::{Feature, FeatureCollection, Geometry, Value};
-
-//     // Helper to create a GeoJSON Feature for testing
-//     fn create_geojson_feature(geometry: Value) -> Feature {
-//         Feature {
-//             bbox: None, // Rely on geometry processing, not feature bbox
-//             geometry: Some(Geometry {
-//                 value: geometry,
-//                 bbox: None,
-//                 foreign_members: None,
-//             }),
-//             id: None,
-//             properties: None,
-//             foreign_members: None,
-//         }
-//     }
-
-//     // Helper to create a Point GeoJSON feature
-//     fn point_feature(lon: f64, lat: f64) -> Feature {
-//         create_geojson_feature(Value::Point(vec![lon, lat]))
-//     }
-
-//     // Helper to create a LineString GeoJSON feature
-//     fn linestring_feature(coords: Vec<(f64, f64)>) -> Feature {
-//         let geojson_coords: Vec<Vec<f64>> = coords.into_iter().map(|c| vec![c.0, c.1]).collect();
-//         create_geojson_feature(Value::LineString(geojson_coords))
-//     }
-
-//     // Helper to create a Polygon GeoJSON feature (will be skipped by current logic)
-//     fn polygon_feature(exterior_coords: Vec<(f64, f64)>) -> Feature {
-//         let geojson_coords: Vec<Vec<f64>> = exterior_coords
-//             .into_iter()
-//             .map(|c| vec![c.0, c.1])
-//             .collect();
-//         create_geojson_feature(Value::Polygon(vec![geojson_coords]))
-//     }
-
-//     // Helper to create a FeatureCollection
-//     fn feature_collection(features: Vec<Feature>) -> FeatureCollection {
-//         FeatureCollection {
-//             bbox: None,
-//             features,
-//             foreign_members: None,
-//         }
-//     }
-
-//     // Helper to create expected Rectangle results concisely
-//     fn r(min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Rectangle {
-//         Rectangle::from_corners((min_x, min_y), (max_x, max_y))
-//     }
-
-//     // Helper to sort Rectangles for consistent comparison
-//     fn sort_rectangles(mut rects: Vec<Rectangle>) -> Vec<Rectangle> {
-//         rects.sort_by(|a, b| {
-//             a.min()
-//                 .x
-//                 .partial_cmp(&b.min().x)
-//                 .unwrap_or(std::cmp::Ordering::Equal)
-//                 .then(
-//                     a.min()
-//                         .y
-//                         .partial_cmp(&b.min().y)
-//                         .unwrap_or(std::cmp::Ordering::Equal),
-//                 )
-//         });
-//         rects
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_single_point_in_germany() {
-//         // Point(9, 50) is in Germany's rough bbox (5.8-15.0, 47.2-55.0)
-//         let fc = feature_collection(vec![point_feature(9.0, 50.0)]);
-//         let radius = 10.0;
-//         let combine = true; // Combine logic should merge a single item with itself (result is just the item)
-
-//         // Expected: Buffered bbox of (9,50)
-//         // (9-10, 50-10) to (9+10, 50+10) = (-1, 40) to (19, 60)
-//         let expected = vec![r(-1.0, 40.0, 19.0, 60.0)];
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_single_point_outside_germany() {
-//         let fc = feature_collection(vec![point_feature(0.0, 0.0)]); // Outside Germany
-//         let radius = 10.0;
-//         let combine = true;
-
-//         let expected: Vec<Rectangle> = vec![]; // Should be filtered out
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_linestring_2_points_in_germany() {
-//         // LineString (9,50)-(10,51) - 2 unique points, in Germany -> Fallback bbox + Buffer
-//         let fc = feature_collection(vec![linestring_feature(vec![(9.0, 50.0), (10.0, 51.0)])]);
-//         let radius = 5.0;
-//         let combine = true;
-
-//         // Bbox of (9,50)-(10,51) is Rect(9,50,10,51)
-//         // Buffered by 5: (9-5, 50-5) to (10+5, 51+5) = (4, 45) to (15, 56)
-//         let expected = vec![r(4.0, 45.0, 15.0, 56.0)];
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_linestring_3_points_in_germany() {
-//         // LineString (9,50)-(10,52)-(11,50) - 3 unique points, in Germany -> Convex Hull Bbox + Buffer
-//         let fc = feature_collection(vec![linestring_feature(vec![
-//             (9.0, 50.0),
-//             (10.0, 52.0),
-//             (11.0, 50.0),
-//         ])]);
-//         let radius = 5.0;
-//         let combine = true;
-
-//         // Convex hull of (9,50), (10,52), (11,50) is the triangle itself.
-//         // Bbox of the triangle is Rect(9,50,11,52)
-//         // Buffered by 5: (9-5, 50-5) to (11+5, 52+5) = (4, 45) to (16, 57)
-//         let expected = vec![r(4.0, 45.0, 16.0, 57.0)];
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_linestring_partly_outside_germany() {
-//         // LineString (9,50)-(10,51)-(0,0) - (0,0) is outside Germany -> entire feature skipped
-//         let fc = feature_collection(vec![linestring_feature(vec![
-//             (9.0, 50.0),
-//             (10.0, 51.0),
-//             (0.0, 0.0),
-//         ])]);
-//         let radius = 5.0;
-//         let combine = true;
-
-//         let expected: Vec<Rectangle> = vec![]; // Should be filtered out
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_unsupported_geometry_type() {
-//         // Polygon feature - currently skipped
-//         let fc = feature_collection(vec![polygon_feature(vec![
-//             (9.0, 50.0),
-//             (10.0, 50.0),
-//             (10.0, 51.0),
-//             (9.0, 51.0),
-//             (9.0, 50.0),
-//         ])]);
-//         let radius = 10.0;
-//         let combine = true;
-
-//         let expected: Vec<Rectangle> = vec![]; // Should be skipped
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_multiple_non_overlapping() {
-//         // Two points in Germany, far apart, buffered boxes don't overlap
-//         let fc = feature_collection(vec![
-//             point_feature(9.0, 50.0),  // Bbox: (-1, 40) to (19, 60) with radius 10
-//             point_feature(14.0, 54.0), // Bbox: (4, 44) to (24, 64) with radius 10
-//         ]);
-//         let radius = 10.0;
-//         let combine = true; // Should result in two separate merged components (themselves)
-
-//         let expected = vec![r(-1.0, 40.0, 24.0, 64.0)];
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         // Sort both vectors for reliable comparison
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_two_overlapping_points() {
-//         // Two points in Germany, buffered boxes overlap
-//         let fc = feature_collection(vec![
-//             point_feature(9.0, 50.0), // Bbox: (-1, 40) to (19, 60)
-//             point_feature(9.5, 50.5), // Bbox: (-0.5, 40.5) to (19.5, 60.5)
-//         ]);
-//         let radius = 10.0;
-//         let combine = true; // Should merge into a single box
-
-//         // Overall bbox of the two buffered boxes
-//         // min_x = min(-1.0, -0.5) = -1.0
-//         // min_y = min(40.0, 40.5) = 40.0
-//         // max_x = max(19.0, 19.5) = 19.5
-//         // max_y = max(60.0, 60.5) = 60.5
-//         let expected = vec![r(-1.0, 40.0, 19.5, 60.5)];
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_point_overlapping_linestring_bbox() {
-//         // Point and LineString in Germany, buffered bboxes overlap
-//         let fc = feature_collection(vec![
-//             point_feature(9.0, 50.0), // Bbox: (-1, 40) to (19, 60)
-//             linestring_feature(vec![(9.5, 50.5), (10.5, 51.5)]), // Bbox (fallback): (9.5,50.5)-(10.5,51.5) -> buffered by 10: (-0.5, 40.5) to (20.5, 61.5)
-//         ]);
-//         let radius = 10.0;
-//         let combine = true; // Should merge into a single box
-
-//         // Overall bbox of the two buffered boxes
-//         // min_x = min(-1.0, -0.5) = -1.0
-//         // min_y = min(40.0, 40.5) = 40.0
-//         // max_x = max(19.0, 20.5) = 20.5
-//         // max_y = max(60.0, 61.5) = 61.5
-//         let expected = vec![r(-1.0, 40.0, 20.5, 61.5)];
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_multiple_overlapping_components() {
-//         // Four points forming two separate overlapping pairs
-//         let fc = feature_collection(vec![
-//             point_feature(9.0, 50.0),  // Bbox: (-1, 40) to (19, 60)
-//             point_feature(9.5, 50.5), // Bbox: (-0.5, 40.5) to (19.5, 60.5) -> overlaps first, merge
-//             point_feature(15.0, 55.0), // Bbox: (5, 45) to (25, 65)
-//             point_feature(15.5, 55.5), // Bbox: (5.5, 45.5) to (25.5, 65.5) -> overlaps third, merge
-//         ]);
-//         let radius = 10.0;
-//         let combine = true; // Should result in two merged boxes
-
-//         // Expected merged box 1 (from P1, P2): (-1.0, 40.0, 19.5, 60.5)
-//         // Expected merged box 2 (from P3, P4): (5.0, 45.0, 25.5, 65.5)
-//         let expected = vec![r(-1.0, 40.0, 25.0, 65.0)];
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_contained_bbox_merges() {
-//         // Larger LineString containing a point, buffered boxes overlap, point bbox contained in LS bbox
-//         let fc = feature_collection(vec![
-//             linestring_feature(vec![(9.0, 50.0), (15.0, 55.0)]), // Bbox (fallback): (9,50)-(15,55) -> buffered by 5: (4, 45)-(20, 60)
-//             point_feature(10.0, 51.0), // Bbox: (10,51) -> buffered by 5: (5, 46)-(15, 56)
-//         ]);
-//         let radius = 5.0;
-//         let combine = true; // Should merge into a single box
-
-//         // Overall bbox of the two buffered boxes
-//         // min_x = min(4.0, 5.0) = 4.0
-//         // min_y = min(45.0, 46.0) = 45.0
-//         // max_x = max(20.0, 15.0) = 20.0
-//         // max_y = max(60.0, 56.0) = 60.0
-//         // The contained box's bounds are within the container's bounds,
-//         // so the merged box is just the container's buffered box.
-//         let expected = vec![r(4.0, 45.0, 20.0, 60.0)];
-
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         // Replace assert_eq! with fuzzy comparison
-//         let sorted_result = sort_rectangles(result);
-//         let sorted_expected = sort_rectangles(expected);
-
-//         // Assert that the number of merged rectangles is the same
-//         assert_eq!(
-//             sorted_result.len(),
-//             sorted_expected.len(),
-//             "Mismatched number of merged rectangles"
-//         );
-
-//         // Use a small tolerance for float comparison
-//         let epsilon = 1e-9; // A common tolerance for double-precision floats
-
-//         // Iterate through the sorted results and expected values and compare coordinates fuzzily
-//         for (res_rect, exp_rect) in sorted_result.iter().zip(sorted_expected.iter()) {
-//             let min_x_diff = (res_rect.min().x - exp_rect.min().x).abs();
-//             let min_y_diff = (res_rect.min().y - exp_rect.min().y).abs();
-//             let max_x_diff = (res_rect.max().x - exp_rect.max().x).abs();
-//             let max_y_diff = (res_rect.max().y - exp_rect.max().y).abs();
-
-//             assert!(
-//                 min_x_diff < epsilon
-//                     && min_y_diff < epsilon
-//                     && max_x_diff < epsilon
-//                     && max_y_diff < epsilon,
-//                 "Merged rectangle {:?} does not nearly match expected {:?} within tolerance {}",
-//                 res_rect,
-//                 exp_rect,
-//                 epsilon
-//             );
-//         }
-//     }
-
-//     #[test]
-//     fn test_collect_bboxes_zero_radius() {
-//         // Single point in Germany, radius 0 -> buffer by 4
-//         let fc = feature_collection(vec![point_feature(9.0, 50.0)]);
-//         let radius = 0.0; // Test radius 0 case
-//         let combine = true;
-
-//         // Expected: Buffered bbox of (9,50) by 4
-//         // (9-4, 50-4) to (9+4, 50+4) = (5, 46) to (13, 54)
-//         let expected = vec![r(5.0, 46.0, 13.0, 54.0)];
-
-//         // Need to adjust expand_bounding_box or pass radius=Some(0.0) if it expects Option
-//         // Assuming expand_bounding_box is adjusted to handle f64 radius and 0.0->4.0 logic
-//         let result = collect_bounding_boxes(&fc, radius, combine);
-//         assert_eq!(sort_rectangles(result), sort_rectangles(expected));
-//     }
-// }

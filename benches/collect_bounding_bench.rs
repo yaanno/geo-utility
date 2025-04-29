@@ -4,7 +4,8 @@ use std::io::Read;
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
 use geo_utility::collect_bounding_boxes;
-use geojson::FeatureCollection;
+use geo_utility::Radius;
+use geojson::FeatureCollection;     
 
 fn load_features_from_file(file_path: &str) -> FeatureCollection {
     let mut file = File::open(file_path).expect("Failed to open data file");
@@ -21,8 +22,8 @@ fn bench_100_features(c: &mut Criterion) {
     c.bench_function("collect_boundingboxes_100_features", |b| {
         b.iter(|| {
             let input_data = &features_1k;
-            let results = collect_bounding_boxes(input_data, 5.0, false);
-            black_box(results);
+            let results = collect_bounding_boxes(input_data, Radius::new(5.0).unwrap(), false);
+            let _ = black_box(results);
         })
     });
 }
@@ -34,8 +35,8 @@ fn bench_1k_features(c: &mut Criterion) {
     c.bench_function("collect_boundingboxes_1k_features", |b| {
         b.iter(|| {
             let input_data = &features_1k;
-            let results = collect_bounding_boxes(input_data, 5.0, false);
-            black_box(results);
+            let results = collect_bounding_boxes(input_data, Radius::new(5.0).unwrap(), false);
+            let _ = black_box(results);
         })
     });
 }
@@ -47,8 +48,8 @@ fn bench_10k_features(c: &mut Criterion) {
     c.bench_function("collect_boundingboxes_10k_features", |b| {
         b.iter(|| {
             let input_data = &features_10k;
-            let results = collect_bounding_boxes(input_data, 5.0, false);
-            black_box(results);
+            let results = collect_bounding_boxes(input_data, Radius::new(5.0).unwrap(), false);
+            let _ = black_box(results);
         })
     });
 }
@@ -60,8 +61,8 @@ fn bench_100k_features(c: &mut Criterion) {
     c.bench_function("collect_boundingboxes_100k_features", |b| {
         b.iter(|| {
             let input_data = &features_100k;
-            let results = collect_bounding_boxes(input_data, 5.0, false);
-            black_box(results);
+            let results = collect_bounding_boxes(input_data, Radius::new(5.0).unwrap(), false);
+            let _ = black_box(results);
         })
     });
 }
@@ -73,8 +74,8 @@ fn bench_1000k_features(c: &mut Criterion) {
     c.bench_function("collect_boundingboxes_1000k_features", |b| {
         b.iter(|| {
             let input_data = &features_1m;
-            let results = collect_bounding_boxes(input_data, 5.0, false);
-            black_box(results);
+            let results = collect_bounding_boxes(input_data, Radius::new(5.0).unwrap(), false);
+            let _ = black_box(results);
         })
     });
 }

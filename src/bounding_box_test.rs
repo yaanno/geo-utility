@@ -3,7 +3,7 @@ use std::io::Read;
 
 use geojson::{Feature, FeatureCollection, GeoJson, Geometry};
 
-use crate::collect_bounding_boxes;
+use crate::collect_bounding_boxes::{collect_bounding_boxes, Radius};
 
 fn load_features_from_file(file_path: &str) -> FeatureCollection {
     let mut file = File::open(file_path).expect("Failed to open data file");
@@ -24,8 +24,9 @@ fn feature_collection(features: Vec<Feature>) -> FeatureCollection {
 pub fn calculate_bounding_box() {
     let features_1k =
         load_features_from_file("synthetic_data_complex_featurecollection_0k_features.geojson");
-        let result_rectangles = collect_bounding_boxes(&features_1k, 5.0, false);
+        let result_rectangles = collect_bounding_boxes(&features_1k, Radius::new(5.0).unwrap(), false);
         // --- Convert result Rectangles to GeoJSON Features ---
+        let result_rectangles = result_rectangles.unwrap();
         let result_features: Vec<Feature> = result_rectangles
             .iter()
             .map(|rect| {
