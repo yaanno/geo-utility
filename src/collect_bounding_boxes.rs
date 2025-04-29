@@ -74,6 +74,9 @@ pub fn collect_bounding_boxes(
     radius: Radius,
     _combine: bool,
 ) -> Result<Vec<Rectangle>, CollectBoundingBoxError> {
+    if featurecollection.features.is_empty() {
+        return Err(CollectBoundingBoxError::EmptyInput);
+    }
     let from_crs = "EPSG:4326";
     let to_crs = "EPSG:3035";
 
@@ -85,16 +88,13 @@ pub fn collect_bounding_boxes(
         collect_initial_buffered_rects(featurecollection, radius.get(), &proj_transformer);
 
     let rectangles: Vec<Rectangle> = initial_geo_rects.into_iter().map(Rectangle::from).collect();
-    let overall_initial_extent = calculate_overall_extent(&rectangles);
+    let overall_initial_extent = calculate_overall_extent(&rectangles)?;
 
     if rectangles.is_empty() {
         return Err(CollectBoundingBoxError::EmptyInput);
     }
 
-    let initial_grid_cells = match calculate_initial_grid_cells(overall_initial_extent) {
-        Ok(value) => value,
-        Err(error) => return Err(error),
-    };
+    let initial_grid_cells = calculate_initial_grid_cells(Some(overall_initial_extent))?;
 
     let uf = group_rects_by_overlap(&rectangles);
     let merged_rectangles: Vec<Rectangle> = merge_components(&rectangles, uf);
@@ -304,9 +304,9 @@ fn collect_initial_buffered_rects(
 ///
 /// # Returns
 /// A geo::Rect representing the overall bounding box, or None if the input slice is empty.
-pub fn calculate_overall_extent(rectangles: &[Rectangle]) -> Option<Rect> {
+pub fn calculate_overall_extent(rectangles: &[Rectangle]) -> Result<Rect, CollectBoundingBoxError> {
     if rectangles.is_empty() {
-        return None;
+        return Err(CollectBoundingBoxError::EmptyInput);
     }
 
     let mut overall_min_x = f64::INFINITY;
@@ -321,7 +321,7 @@ pub fn calculate_overall_extent(rectangles: &[Rectangle]) -> Option<Rect> {
         overall_max_y = overall_max_y.max(rect.max().y);
     }
 
-    Some(Rect::new(
+    Ok(Rect::new(
         Coord {
             x: overall_min_x,
             y: overall_min_y,
@@ -362,9 +362,6 @@ mod tests {
             foreign_members: None,
         }
     }
-
-    // Helper to sort rectangles for comparison (though we won't compare individual rects here)
-    // use crate::geometry::sort_rectangles; // Assuming this helper exists
 
     // A simple test case for the new pipeline with dynamic grid sizing
     #[test]
@@ -444,7 +441,7 @@ mod tests {
         );
 
         // 3. The overall bounding box of the resulting grid cells is reasonable
-        //    This is a tougher assertion due to projection/reverse projection noise.
+        //    This is a tougher assertion due to dynamic sizing and projection noise.
         //    We'll calculate the overall bbox of the result rects (which are in WGS84)
         //    and check if its corners are within a small tolerance of the expected area.
         //    The expected area would be the overall bbox of the two input points
