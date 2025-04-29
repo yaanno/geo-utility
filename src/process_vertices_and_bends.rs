@@ -33,8 +33,7 @@ pub fn process_vertices_and_bends(
     bend_threshold_degrees: f64, // Threshold angle in degrees to detect a bend at an inner vertex
     extension_distance: f64,     // The distance to extend the lines
 ) -> Vec<LineString<f64>> {
-    let mut generated_features: Vec<LineString<f64>> =
-        Vec::with_capacity(features.len());
+    let mut generated_features: Vec<LineString<f64>> = Vec::with_capacity(features.len());
     let bend_threshold_radians = bend_threshold_degrees.to_radians();
 
     for feature in &features {
@@ -73,9 +72,8 @@ pub fn process_vertices_and_bends(
                     }
                     // --- Process Simple 2-Point LineStrings ---
                     else if num_points == 2 {
-                        if let Some(lines) = process_simple_line(&coords, extension_distance) {
-                            generated_features.extend(lines);
-                        }
+                        let lines = process_simple_line(&coords, extension_distance);
+                        generated_features.extend(lines);
                     }
                 }
                 _ => {
@@ -96,7 +94,7 @@ pub fn process_vertices_and_bends(
 ///
 /// # Returns
 /// A vector of (LineString) containing the generated geometry
-fn process_simple_line(coords: &[Coord<f64>], extension_distance: f64) -> Option<Vec<LineString<f64>>> {
+fn process_simple_line(coords: &[Coord<f64>], extension_distance: f64) -> Vec<LineString<f64>> {
     let p_start = Point::from(coords[0]);
     let p_end = Point::from(coords[1]);
 
@@ -127,7 +125,7 @@ fn process_simple_line(coords: &[Coord<f64>], extension_distance: f64) -> Option
         generated_features.push(end_line_string);
     }
 
-    Some(generated_features)
+    generated_features
 }
 
 const EPSILON: f64 = 1e-10;
@@ -191,17 +189,12 @@ fn process_multisegment_line(
         // Calculate the angle between vectors (the turn angle) in radians
         let angle_radians = cos_theta_clamped.acos();
 
-        // Check if the angle indicates a significant bend
-        // We detect a bend if the turn angle is GREATER than the threshold
+        // Check if the angle between the incoming and outgoing vectors indicates a significant bend.
+        // A bend is detected if the angle between vectors is GREATER than the threshold.
         if angle_radians.abs() > bend_threshold_radians {
             // At bends, use the outgoing segment direction (v_out) for forward/orthogonal
             // and the incoming segment direction (v_in) for backward.
-            if let Some(line_string) = generate_lines_at_point(
-                p_current,
-                v_out,
-                v_in,
-                extension_distance,
-            ) {
+            if let Some(line_string) = generate_lines_at_point(p_current, v_out, v_in, extension_distance) {
                 generated_features.push(line_string);
             }
         }
