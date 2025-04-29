@@ -10,6 +10,8 @@ use proj::Proj;
 use rstar::RTreeObject;
 use std::collections::HashSet;
 
+const TARGET_NUM_CELLS: f64 = 20.0;
+
 /**
  * Collects bounding boxes from a geojson FeatureCollection.
  *
@@ -42,35 +44,39 @@ pub fn collect_bounding_boxes(
     if rectangles.is_empty() {
         return vec![];
     }
-    let initial_grid_cells: Vec<Rect>;
-    if let Some(overall_initial_extent) = overall_initial_extent {
-        let area = overall_initial_extent.height() * overall_initial_extent.width();
-        let target_num_cells = 20.0;
 
-        if area <= 0.0 {
-            return vec![];
-        }
-        let area_per_cell = area / target_num_cells;
-
-        if area_per_cell <= 0.0 {
-            return vec![];
-        }
-        let calculated_cell_size_meters = area_per_cell.sqrt();
-
-        initial_grid_cells = create_square_grid(
-            overall_initial_extent,
-            calculated_cell_size_meters,
-            calculated_cell_size_meters,
-        );
-    } else {
-        return vec![];
-    }
+    let initial_grid_cells = match calculate_initial_grid_cells(overall_initial_extent) {
+        Ok(value) => value,
+        Err(value) => return value,
+    };
 
     let uf = group_rects_by_overlap(&rectangles);
     let merged_rectangles: Vec<Rectangle> = merge_components(&rectangles, uf);
 
     let tree = crate::grouping::index_rectangles(&merged_rectangles);
 
+    let grid_cells_intersecting_shapes =
+        create_transformed_grid_cells(proj_transformer_reverse, initial_grid_cells, tree);
+
+    grid_cells_intersecting_shapes
+}
+
+/**
+ * Creates grid cells intersecting shapes.
+ *
+ * # Arguments
+ * `proj_transformer_reverse` - The reverse PROJ transformer.
+ * `initial_grid_cells` - The initial grid cells.
+ * `tree` - The R-tree containing the indexed rectangles.
+ *
+ * # Returns
+ * A vector of grid cells intersecting shapes.
+ */
+fn create_transformed_grid_cells(
+    proj_transformer_reverse: Proj,
+    initial_grid_cells: Vec<Rect>,
+    tree: rstar::RTree<crate::geometry::RectangleWithId>,
+) -> Vec<Rectangle> {
     let grid_cells_intersecting_shapes: Vec<Rectangle> = initial_grid_cells
         .into_iter()
         .map(Rectangle::from)
@@ -93,8 +99,45 @@ pub fn collect_bounding_boxes(
             )
         })
         .collect();
-
     grid_cells_intersecting_shapes
+}
+
+/**
+ * Calculates the initial grid cells based on the overall initial extent.
+ *
+ * # Arguments
+ * `overall_initial_extent` - The overall initial extent.
+ *
+ * # Returns
+ * A Result containing a vector of grid cells or an empty vector if the calculation fails.
+ */
+fn calculate_initial_grid_cells(
+    overall_initial_extent: Option<Rect>,
+) -> Result<Vec<Rect>, Vec<Rectangle>> {
+    let initial_grid_cells: Vec<Rect>;
+    if let Some(overall_initial_extent) = overall_initial_extent {
+        let area = overall_initial_extent.height() * overall_initial_extent.width();
+        let target_num_cells = TARGET_NUM_CELLS;
+
+        if area <= 0.0 {
+            return Err(vec![]);
+        }
+        let area_per_cell = area / target_num_cells;
+
+        if area_per_cell <= 0.0 {
+            return Err(vec![]);
+        }
+        let calculated_cell_size_meters = area_per_cell.sqrt();
+
+        initial_grid_cells = create_square_grid(
+            overall_initial_extent,
+            calculated_cell_size_meters,
+            calculated_cell_size_meters,
+        );
+    } else {
+        return Err(vec![]);
+    }
+    Ok(initial_grid_cells)
 }
 
 /**
