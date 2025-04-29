@@ -18,7 +18,7 @@ fn bench_100_features(c: &mut Criterion) {
     let features_1k =
         load_features_from_file("synthetic_data_complex_featurecollection_0k_features.geojson");
 
-    c.bench_function("collect_convex_boundingboxes_100_features", |b| {
+    c.bench_function("collect_boundingboxes_100_features", |b| {
         b.iter(|| {
             let input_data = &features_1k;
             let results = collect_bounding_boxes(input_data, 5.0, false);
@@ -31,7 +31,7 @@ fn bench_1k_features(c: &mut Criterion) {
     let features_1k =
         load_features_from_file("synthetic_data_complex_featurecollection_1k_features.geojson");
 
-    c.bench_function("collect_convex_boundingboxes_1k_features", |b| {
+    c.bench_function("collect_boundingboxes_1k_features", |b| {
         b.iter(|| {
             let input_data = &features_1k;
             let results = collect_bounding_boxes(input_data, 5.0, false);
@@ -44,7 +44,7 @@ fn bench_10k_features(c: &mut Criterion) {
     let features_10k =
         load_features_from_file("synthetic_data_complex_featurecollection_10k_features.geojson");
 
-    c.bench_function("collect_convex_boundingboxes_10k_features", |b| {
+    c.bench_function("collect_boundingboxes_10k_features", |b| {
         b.iter(|| {
             let input_data = &features_10k;
             let results = collect_bounding_boxes(input_data, 5.0, false);
@@ -57,7 +57,7 @@ fn bench_100k_features(c: &mut Criterion) {
     let features_100k =
         load_features_from_file("synthetic_data_complex_featurecollection_100k_features.geojson");
 
-    c.bench_function("collect_convex_boundingboxes_100k_features", |b| {
+    c.bench_function("collect_boundingboxes_100k_features", |b| {
         b.iter(|| {
             let input_data = &features_100k;
             let results = collect_bounding_boxes(input_data, 5.0, false);
@@ -66,18 +66,18 @@ fn bench_100k_features(c: &mut Criterion) {
     });
 }
 
-// fn bench_1000k_features(c: &mut Criterion) {
-//     let features_1m =
-//         load_features_from_file("synthetic_data_complex_featurecollection_1000k_features.geojson");
+fn bench_1000k_features(c: &mut Criterion) {
+    let features_1m =
+        load_features_from_file("synthetic_data_complex_featurecollection_1000k_features.geojson");
 
-//     c.bench_function("collect_convex_boundingboxes_1000k_features", |b| {
-//         b.iter(|| {
-//             let input_data = &features_1m;
-//             let results = collect_bounding_boxes(input_data, 5.0, false);
-//             black_box(results);
-//         })
-//     });
-// }
+    c.bench_function("collect_boundingboxes_1000k_features", |b| {
+        b.iter(|| {
+            let input_data = &features_1m;
+            let results = collect_bounding_boxes(input_data, 5.0, false);
+            black_box(results);
+        })
+    });
+}
 
 criterion_group!(
     name = benches_100;
@@ -103,10 +103,10 @@ criterion_group!(
     targets = bench_100k_features
 );
 
-// criterion_group!(
-//     name = benches_1000k;
-//     config = Criterion::default().sample_size(10);
-//     targets = bench_1000k_features
-// );
+criterion_group!(
+    name = benches_1000k;
+    config = Criterion::default().sample_size(10);
+    targets = bench_1000k_features
+);
 
-criterion_main!(benches_100, benches_10k, benches_100k, benches_1k,);
+criterion_main!(benches_100, benches_10k, benches_100k, benches_1k, benches_1000k);

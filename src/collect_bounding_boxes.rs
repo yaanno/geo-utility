@@ -54,7 +54,7 @@ pub fn collect_bounding_boxes(
         //     overall_initial_extent.height() * overall_initial_extent.width()
         // );
         let area = overall_initial_extent.height() * overall_initial_extent.width();
-        let target_num_cells = 200.0; // Or 1000.0, or whatever your target is
+        let target_num_cells = 20.0; // Or 1000.0, or whatever your target is
 
         if area <= 0.0 {
             return vec![];
@@ -291,7 +291,7 @@ pub fn calculate_overall_extent(rectangles: &[Rectangle]) -> Option<Rect> {
 
 #[cfg(test)]
 mod tests {
-    use geojson::{Feature, FeatureCollection};
+    use geojson::{Feature, FeatureCollection, GeoJson, Geometry};
 
     use super::*; // Import items from the parent module
 
@@ -326,10 +326,12 @@ mod tests {
     #[test]
     fn test_collect_bboxes_dynamic_grid_simple() {
         // Two points in Germany, close together, buffered boxes should overlap and merge
-        let fc = feature_collection(vec![
+        let input_features = vec![
             point_feature(9.0, 50.0),     // Point 1
-            point_feature(9.001, 50.001), // Point 2, very close
-        ]);
+            point_feature(9.001, 50.001), // Point 2, very close,
+            point_feature(8.9901, 49.99),
+        ];
+        let fc = feature_collection(input_features.clone()); // Clone input features for later visualization
         let radius = 10.0; // 10 meters buffer
         let combine = true; // Merging is enabled
 
@@ -343,20 +345,50 @@ mod tests {
         // 5. The overall extent of the merged shape is small.
         // 6. A target of 10 cells over that small extent results in G around 10.
 
-        let result = collect_bounding_boxes(&fc, radius, combine);
+        let result_rectangles = collect_bounding_boxes(&fc, radius, combine);
+
+        // --- Convert result Rectangles to GeoJSON Features ---
+        let result_features: Vec<Feature> = result_rectangles
+            .iter()
+            .map(|rect| {
+                let geo_rect = rect.to_geo_rect(); // Convert your Rectangle to geo::Rect
+                let polygon = geo::Polygon::from(geo_rect); // Convert geo::Rect to geo::Polygon
+                let geometry = Geometry::from(&polygon); // Convert geo::Polygon to geojson::Geometry
+                Feature {
+                    bbox: None,
+                    geometry: Some(geometry),
+                    id: None,
+                    properties: None,
+                    foreign_members: None,
+                }
+            })
+            .collect();
+
+        // --- Combine input points and output grid cells into one FeatureCollection ---
+        let mut all_features = input_features; // Start with the input points
+        all_features.extend(result_features); // Add the resulting grid cells
+        let output_fc = feature_collection(all_features);
+        let geojson_output = GeoJson::from(output_fc);
+        let geojson_string = geojson_output.to_string();
+
+        // --- Print the GeoJSON string ---
+        println!("--- GeoJSON Output for Visualization ---");
+        println!("{}", geojson_string);
+        println!("--- End GeoJSON Output ---");
+        // Copy the string between the markers and paste into geojson.io or save as a .geojson file
 
         // Assertions
         // 1. The result vector is not empty
-        assert!(!result.is_empty(), "Resulting grid should not be empty");
+        assert!(!result_rectangles.is_empty(), "Resulting grid should not be empty");
 
         // 2. The number of resulting grid cells (I) is close to the target (e.g., 10)
         //    Allow for some variability in the actual number of cells generated
         let expected_min_cells = 8; // Allow +/- a few cells around the target
         let expected_max_cells = 20; // Adjust this range based on your actual dynamic calc behavior
         assert!(
-            result.len() >= expected_min_cells && result.len() <= expected_max_cells,
+            result_rectangles.len() >= expected_min_cells && result_rectangles.len() <= expected_max_cells,
             "Number of resulting grid cells ({}) should be between {} and {}",
-            result.len(),
+            result_rectangles.len(),
             expected_min_cells,
             expected_max_cells
         );
@@ -371,13 +403,13 @@ mod tests {
         //    A simpler check is to get the overall bbox and check its format/units.
 
         // Calculate the overall bounding box of the result rectangles (in WGS84)
-        let result_overall_bbox_option = geo::MultiPolygon::from(
-            result
-                .iter()
-                .map(|r| geo::Polygon::from(r.to_geo_rect()))
-                .collect::<Vec<geo::Polygon>>(),
-        )
-        .bounding_rect();
+        // Note: Need geo::Polygon for MultiPolygon::from
+        let result_polygons: Vec<geo::Polygon> = result_rectangles
+            .iter()
+            .map(|r| geo::Polygon::from(r.to_geo_rect()))
+            .collect();
+
+        let result_overall_bbox_option = geo::MultiPolygon::from(result_polygons).bounding_rect(); // Use result_polygons
 
         assert!(
             result_overall_bbox_option.is_some(),
