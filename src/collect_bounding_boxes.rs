@@ -26,11 +26,9 @@ pub fn collect_bounding_boxes(
     radius: f64,
     _combine: bool,
 ) -> Vec<Rectangle> {
-    // Define CRSs
-    let from_crs = "EPSG:4326"; // Assuming GeoJSON input is WGS84
-    let to_crs = "EPSG:3035"; // Target metric CRS (e.g., ETRS89-LAEA)
+    let from_crs = "EPSG:4326";
+    let to_crs = "EPSG:3035";
 
-    // *** Create the PROJ transformer ONCE ***
     let proj_transformer =
         Proj::new_known_crs(&from_crs, &to_crs, None).expect("Failed to create PROJ transformer");
     let proj_transformer_reverse = Proj::new_known_crs(&to_crs, &from_crs, None)
@@ -39,22 +37,15 @@ pub fn collect_bounding_boxes(
         collect_initial_buffered_rects(featurecollection, radius, &proj_transformer);
 
     let rectangles: Vec<Rectangle> = initial_geo_rects.into_iter().map(Rectangle::from).collect();
-    // Calculate the overall extent of these initial rectangles
     let overall_initial_extent = calculate_overall_extent(&rectangles);
 
-    // If there are no initial rectangles, there's nothing to grid or merge
     if rectangles.is_empty() {
         return vec![];
     }
     let initial_grid_cells: Vec<Rect>;
     if let Some(overall_initial_extent) = overall_initial_extent {
-        // println!("Overall initial extent: {:?}", overall_initial_extent);
-        // println!(
-        //     "Area of overall initial extent: {:?}",
-        //     overall_initial_extent.height() * overall_initial_extent.width()
-        // );
         let area = overall_initial_extent.height() * overall_initial_extent.width();
-        let target_num_cells = 20.0; // Or 1000.0, or whatever your target is
+        let target_num_cells = 20.0;
 
         if area <= 0.0 {
             return vec![];
@@ -64,28 +55,19 @@ pub fn collect_bounding_boxes(
         if area_per_cell <= 0.0 {
             return vec![];
         }
-        let calculated_cell_size_meters = area_per_cell.sqrt(); // Calculate the dynamic size
+        let calculated_cell_size_meters = area_per_cell.sqrt();
 
         initial_grid_cells = create_square_grid(
             overall_initial_extent,
             calculated_cell_size_meters,
             calculated_cell_size_meters,
-        ); // Use the CALCULATED size
-    // println!(
-    //     "Number of initial grid cells (G): {}",
-    //     initial_grid_cells.len()
-    // );
+        );
     } else {
-        // If there's no overall extent, there's nothing to grid or merge
         return vec![];
     }
 
     let uf = group_rects_by_overlap(&rectangles);
     let merged_rectangles: Vec<Rectangle> = merge_components(&rectangles, uf);
-    // println!(
-    //     "Number of merged rectangles (M): {}",
-    //     merged_rectangles.len()
-    // );
 
     let tree = crate::grouping::index_rectangles(&merged_rectangles);
 
@@ -97,10 +79,7 @@ pub fn collect_bounding_boxes(
                 .next()
                 .is_some()
         })
-        // *** >>> ADD REVERSE PROJECTION STEP HERE <<< ***
         .map(|grid_cell_projected| {
-            // grid_cell_projected is a Rectangle in the projected CRS
-            // Transform the corners of the Rectangle back to the original geographic CRS
             let min_geographic = proj_transformer_reverse
                 .convert(grid_cell_projected.min())
                 .expect("Reverse projection of cell min failed");
@@ -108,27 +87,12 @@ pub fn collect_bounding_boxes(
                 .convert(grid_cell_projected.max())
                 .expect("Reverse projection of cell max failed");
 
-            // Create a new Rectangle in the original geographic CRS
             Rectangle::from_corners(
                 (min_geographic.x, min_geographic.y),
                 (max_geographic.x, max_geographic.y),
             )
         })
         .collect();
-
-    // println!(
-    //     "Number of grid cells intersecting shapes (I): {}",
-    //     grid_cells_intersecting_shapes.len()
-    // );
-
-    // print grid_cells_intersecting_shapes coords
-    // println!(
-    //     "Grid cells intersecting shapes: {:?}",
-    //     grid_cells_intersecting_shapes
-    //         .iter()
-    //         .map(|r| r.width() * r.height())
-    //         .collect::<Vec<_>>()
-    // );
 
     grid_cells_intersecting_shapes
 }
@@ -158,11 +122,10 @@ fn collect_initial_buffered_rects(
             }
         }
 
-        // 1. Extract geometry and check location based on type
         let geometry_value = match feature.geometry.as_ref() {
             Some(geometry) => &geometry.value,
             None => {
-                continue; // Skip features without geometry
+                continue;
             }
         };
         let mut coords: Vec<Coord> = Vec::new();
@@ -194,31 +157,24 @@ fn collect_initial_buffered_rects(
                 }
             }
             _ => {
-                // Skip unsupported geometry types
                 continue;
             }
         }
-        // 2. Check if all relevant points were in Germany
         if !all_points_in_germany {
-            continue; // Skip features that were not entirely within Germany bbox
+            continue;
         }
         let projected_coords: Vec<Coord> = coords
             .into_iter()
             .map(|c| proj_transformer.convert(c).unwrap())
             .collect();
 
-        // 3. Create bounding box
         let unique_coords_count = projected_coords
             .iter()
             .map(|c| (OrderedFloat(c.x), OrderedFloat(c.y)))
             .collect::<HashSet<_>>()
             .len();
-        // println!("Unique coords count: {}", unique_coords_count);
         if unique_coords_count < 3 {
-            // Calculate fallback bbox using the PROJECTED coords
-            // Need to reconstruct the geometry_to_process from projected_coords if needed
             let projected_geometry_to_process = match geometry_value.type_name() {
-                // Use original type name
                 "Point" => geo::Geometry::Point(Point::from(
                     *projected_coords
                         .first()
@@ -226,30 +182,26 @@ fn collect_initial_buffered_rects(
                 )),
                 "LineString" => {
                     geo::Geometry::LineString(GeoLineString::new(projected_coords.clone()))
-                } // Clone if projected_coords is used elsewhere
+                }
                 _ => unreachable!("Should only be Point or LineString at this stage"),
             };
 
             let fallback_bbox_projected = projected_geometry_to_process.bounding_rect();
 
             if let Some(bounding_box) = fallback_bbox_projected {
-                // Expand the bounding box using the radius in METERS
                 let expanded_bounding_box = expand_bounding_box(&bounding_box, radius);
-                bounding_boxes.push(expanded_bounding_box); // Store bbox in projected CRS
+                bounding_boxes.push(expanded_bounding_box);
             }
         } else {
-            // Calculate convex hull and bounding box using the PROJECTED coords
             let multi_point_projected = MultiPoint::from(projected_coords);
             let bounding_box = multi_point_projected.convex_hull().bounding_rect();
 
             if let Some(bounding_box) = bounding_box {
-                // Expand the bounding box using the radius in METERS
                 let expanded_bounding_box = expand_bounding_box(&bounding_box, radius);
-                bounding_boxes.push(expanded_bounding_box); // Store bbox in projected CRS
+                bounding_boxes.push(expanded_bounding_box);
             }
         }
     }
-    // println!("Number of bounding boxes: {}", bounding_boxes.len());
     bounding_boxes
 }
 
@@ -379,14 +331,18 @@ mod tests {
 
         // Assertions
         // 1. The result vector is not empty
-        assert!(!result_rectangles.is_empty(), "Resulting grid should not be empty");
+        assert!(
+            !result_rectangles.is_empty(),
+            "Resulting grid should not be empty"
+        );
 
         // 2. The number of resulting grid cells (I) is close to the target (e.g., 10)
         //    Allow for some variability in the actual number of cells generated
         let expected_min_cells = 8; // Allow +/- a few cells around the target
         let expected_max_cells = 20; // Adjust this range based on your actual dynamic calc behavior
         assert!(
-            result_rectangles.len() >= expected_min_cells && result_rectangles.len() <= expected_max_cells,
+            result_rectangles.len() >= expected_min_cells
+                && result_rectangles.len() <= expected_max_cells,
             "Number of resulting grid cells ({}) should be between {} and {}",
             result_rectangles.len(),
             expected_min_cells,
