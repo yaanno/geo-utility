@@ -249,7 +249,6 @@ pub fn collect_convex_boundingboxes(
             .collect::<HashSet<_>>()
             .len();
 
-        // *** MODIFIED LOGIC FOR FALLBACK OR CONVEX HULL ***
         if unique_coords_count < 3 {
             // --- FALLBACK: Calculate bounding box and convert to polygon ---
             // Need to handle the case where `geometry_to_process` might not have been set

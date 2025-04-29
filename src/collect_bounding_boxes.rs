@@ -30,23 +30,22 @@ impl Radius {
 
 // Consider making TARGET_NUM_CELLS configurable
 pub struct GridConfig {
-    pub target_num_cells: f64,
+    pub target_num_cells: usize,
     #[allow(dead_code)]
-    pub min_cells: f64,
+    pub min_cells: usize,
     #[allow(dead_code)]
-    pub max_cells: f64,
+    pub max_cells: usize,
 }
 
 impl Default for GridConfig {
     fn default() -> Self {
         Self {
-            target_num_cells: 20.0,
-            min_cells: 2.0,
-            max_cells: 10.0,
+            target_num_cells: 20,
+            min_cells: 2,
+            max_cells: 10,
         }
     }
 }
-
 
 #[derive(Debug)]
 pub enum CollectBoundingBoxError {
@@ -80,8 +79,8 @@ pub fn collect_bounding_boxes(
     let from_crs = "EPSG:4326";
     let to_crs = "EPSG:3035";
 
-    let proj_transformer =
-        Proj::new_known_crs(&from_crs, &to_crs, None).map_err(|e| CollectBoundingBoxError::ProjCreateError(e))?;
+    let proj_transformer = Proj::new_known_crs(&from_crs, &to_crs, None)
+        .map_err(|e| CollectBoundingBoxError::ProjCreateError(e))?;
     let proj_transformer_reverse = Proj::new_known_crs(&to_crs, &from_crs, None)
         .map_err(|e| CollectBoundingBoxError::ProjCreateError(e))?;
     let initial_geo_rects =
@@ -101,7 +100,7 @@ pub fn collect_bounding_boxes(
 
     let tree = crate::grouping::index_rectangles(&merged_rectangles);
 
-    let grid_cells_intersecting_shapes =    
+    let grid_cells_intersecting_shapes =
         create_transformed_grid_cells(proj_transformer_reverse, initial_grid_cells, tree);
 
     grid_cells_intersecting_shapes
@@ -132,13 +131,11 @@ fn create_transformed_grid_cells(
                 .is_some()
         })
         .map(|grid_cell_projected| {
-            let min_geographic = match proj_transformer_reverse
-                            .convert(grid_cell_projected.min()) {
+            let min_geographic = match proj_transformer_reverse.convert(grid_cell_projected.min()) {
                 Ok(it) => it,
                 Err(_) => return Err(CollectBoundingBoxError::ProjTransformError),
             };
-            let max_geographic = match proj_transformer_reverse
-                            .convert(grid_cell_projected.max()) {
+            let max_geographic = match proj_transformer_reverse.convert(grid_cell_projected.max()) {
                 Ok(it) => it,
                 Err(_) => return Err(CollectBoundingBoxError::ProjTransformError),
             };
@@ -171,7 +168,7 @@ fn calculate_initial_grid_cells(
         if area <= 0.0 {
             return Err(CollectBoundingBoxError::InvalidArea);
         }
-        let area_per_cell = area / target_num_cells;
+        let area_per_cell = area / target_num_cells as f64;
 
         if area_per_cell <= 0.0 {
             return Err(CollectBoundingBoxError::InvalidArea);
@@ -368,9 +365,9 @@ mod tests {
     fn test_collect_bboxes_dynamic_grid_simple() {
         // Two points in Germany, close together, buffered boxes should overlap and merge
         let input_features = vec![
-            point_feature(9.0, 50.0),     // Point 1
-            point_feature(9.1, 50.1),     // Point 2, very close
-            point_feature(8.9, 49.9),     // Point 3, also close
+            point_feature(9.0, 50.0), // Point 1
+            point_feature(9.1, 50.1), // Point 2, very close
+            point_feature(8.9, 49.9), // Point 3, also close
         ];
         let fc = feature_collection(input_features.clone()); // Clone input features for later visualization
         let radius = 10.0; // 10 meters buffer
@@ -386,51 +383,14 @@ mod tests {
         // 5. The overall extent of the merged shape is small.
         // 6. A target of 10 cells over that small extent results in G around 10.
 
-        let result_rectangles = collect_bounding_boxes(&fc, Radius::new(radius).unwrap(), combine).unwrap();
-
-        // --- Convert result Rectangles to GeoJSON Features ---
-        // let result_rectangles = result_rectangles.unwrap();
-        // let result_features: Vec<Feature> = result_rectangles
-        //     .iter()
-        //     .map(|rect| {
-        //         let geo_rect = rect.to_geo_rect(); // Convert your Rectangle to geo::Rect
-        //         let polygon = geo::Polygon::from(geo_rect); // Convert geo::Rect to geo::Polygon
-        //         let geometry = Geometry::from(&polygon); // Convert geo::Polygon to geojson::Geometry
-        //         Feature {
-        //             bbox: None,
-        //             geometry: Some(geometry),
-        //             id: None,
-        //             properties: None,
-        //             foreign_members: None,
-        //         }
-        //     })
-        //     .collect();
-
-        // // --- Combine input points and output grid cells into one FeatureCollection ---
-        // let mut all_features = input_features; // Start with the input points
-        // all_features.extend(result_features); // Add the resulting grid cells
-        // let output_fc = feature_collection(all_features);
-        // let geojson_output = GeoJson::from(output_fc);
-        // let geojson_string = geojson_output.to_string();
-
-        // // --- Print the GeoJSON string ---
-        // println!("--- GeoJSON Output for Visualization ---");
-        // println!("{}", geojson_string);
-        // println!("--- End GeoJSON Output ---");
-        // // Copy the string between the markers and paste into geojson.io or save as a .geojson file
-
-        // // Assertions
-        // // 1. The result vector is not empty
-        // assert!(
-        //     !result_rectangles.is_empty(),
-        //     "Resulting grid should not be empty"
-        // );
+        let result_rectangles =
+            collect_bounding_boxes(&fc, Radius::new(radius).unwrap(), combine).unwrap();
 
         // 2. The number of resulting grid cells (I) is close to the target (e.g., 10)
         //    Allow for some variability in the actual number of cells generated
         let grid_config = GridConfig::default();
-        let expected_min_cells = grid_config.min_cells as usize; // Allow +/- a few cells around the target
-        let expected_max_cells = grid_config.max_cells as usize; // Adjust this range based on your actual dynamic calc behavior
+        let expected_min_cells = grid_config.min_cells; // Allow +/- a few cells around the target
+        let expected_max_cells = grid_config.max_cells; // Adjust this range based on your actual dynamic calc behavior
         assert!(
             result_rectangles.len() >= expected_min_cells
                 && result_rectangles.len() <= expected_max_cells,

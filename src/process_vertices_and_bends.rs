@@ -1,7 +1,13 @@
 use geo::{Coord, LineString, Point};
 use geojson::{Feature, Value};
-use serde_json::Value as SerdeValue;
 
+/// Checks if a feature is a "Gebäudekante" (building edge).
+///
+/// # Arguments
+/// * `feature`: The GeoJSON feature to check
+///
+/// # Returns
+/// A boolean indicating whether the feature is a "Gebäudekante" (building edge)
 pub fn is_gebaeudekante(feature: &Feature) -> bool {
     feature
         .properties
@@ -13,14 +19,21 @@ pub fn is_gebaeudekante(feature: &Feature) -> bool {
         .map_or(false, |id_str| id_str == "Gebäudekante")
 }
 
-// This function processes original LineString vertices, detecting bends
-// and handling simple 2-point lines, to generate extended features.
+/// Processes original LineString vertices, detecting bends and handling simple 2-point lines, to generate extended features.
+///
+/// # Arguments
+/// * `features`: A vector of GeoJSON features to process
+/// * `bend_threshold_degrees`: The angle in degrees to detect a bend at an inner vertex
+/// * `extension_distance`: The distance to extend the lines
+///
+/// # Returns
+/// A vector of (LineString) containing the generated geometry
 pub fn process_vertices_and_bends(
     features: Vec<Feature>,
     bend_threshold_degrees: f64, // Threshold angle in degrees to detect a bend at an inner vertex
     extension_distance: f64,     // The distance to extend the lines
-) -> Vec<(LineString<f64>, Option<SerdeValue>)> {
-    let mut generated_features: Vec<(LineString<f64>, Option<SerdeValue>)> =
+) -> Vec<LineString<f64>> {
+    let mut generated_features: Vec<LineString<f64>> =
         Vec::with_capacity(features.len());
     let bend_threshold_radians = bend_threshold_degrees.to_radians();
 
@@ -30,7 +43,6 @@ pub fn process_vertices_and_bends(
                 Value::LineString(line_coords) => {
                     // Filter out "Gebäudekante"
                     if is_gebaeudekante(feature) {
-                        // println!("Skipping feature with objectId: Gebäudekante");
                         continue;
                     }
 
@@ -46,217 +58,25 @@ pub fn process_vertices_and_bends(
                     let num_points = coords.len();
 
                     if num_points < 2 {
-                        // println!("LineString has fewer than 2 points, skipping.");
                         continue;
                     }
 
-                    // --- Function to generate the four lines at a given point with a specific direction ---
-                    let mut generate_lines_at_point = |
-                    current_point: Point<f64>,
-                    forward_direction: Point<f64>, // Vector for forward/orthogonal
-                    backward_direction: Point<f64>, // Vector for backward extension
-                    | {
-                        // Check if the forward direction vector has a non-zero length
-                        let forward_length = forward_direction.x().hypot(forward_direction.y());
-                        if forward_length == 0.0 {
-                            // println!(
-                            //     "Skipping line generation at point {:?} due to zero-length forward direction vector.",
-                            //     current_point
-                            // );
-                            return; // Cannot determine direction
-                        }
-
-                        // Normalize the forward direction vector
-                        let unit_forward_direction = Point::new(
-                            forward_direction.x() / forward_length,
-                            forward_direction.y() / forward_length,
-                        );
-
-                        // Check if the backward direction vector has a non-zero length
-                        let backward_length = backward_direction.x().hypot(backward_direction.y());
-                        let unit_backward_direction = if backward_length > 0.0 {
-                            Point::new(
-                                backward_direction.x() / backward_length,
-                                backward_direction.y() / backward_length,
-                            )
-                        } else {
-                            // If backward direction is zero length, use the reverse of forward direction
-                            Point::new(-unit_forward_direction.x(), -unit_forward_direction.y())
-                        };
-
-                        // --- Generate the four extended/rotated points ---
-
-                        // Point extended forward along forward direction
-                        let extended_forward = Point::new(
-                            current_point.x() + unit_forward_direction.x() * extension_distance,
-                            current_point.y() + unit_forward_direction.y() * extension_distance,
-                        );
-
-                        // Point extended backward along backward direction
-                        let extended_backward = Point::new(
-                            current_point.x() + unit_backward_direction.x() * extension_distance,
-                            current_point.y() + unit_backward_direction.y() * extension_distance,
-                        );
-
-                        // Rotate the unit forward direction vector +90 degrees for orthogonal direction
-                        let orthogonal_direction_90 = Point::new(
-                            -unit_forward_direction.y(), // Rotated X
-                            unit_forward_direction.x(),  // Rotated Y
-                        );
-
-                        // Rotate the unit forward direction vector -90 degrees for orthogonal direction
-                        let orthogonal_direction_minus_90 = Point::new(
-                            unit_forward_direction.y(),  // Rotated X
-                            -unit_forward_direction.x(), // Rotated Y
-                        );
-
-                        // Point extended in +90 degree orthogonal direction
-                        let extended_orthogonal_90 = Point::new(
-                            current_point.x() + orthogonal_direction_90.x() * extension_distance,
-                            current_point.y() + orthogonal_direction_90.y() * extension_distance,
-                        );
-
-                        // Point extended in -90 degree orthogonal direction
-                        let extended_orthogonal_minus_90 = Point::new(
-                            current_point.x()
-                                + orthogonal_direction_minus_90.x() * extension_distance,
-                            current_point.y()
-                                + orthogonal_direction_minus_90.y() * extension_distance,
-                        );
-
-                        // --- Build the generated LineString for this point ---
-                        let mut generated_segments_coords: Vec<Coord<f64>> = Vec::with_capacity(8);
-
-                        // 1. Segment: current_point -> extended_forward
-                        generated_segments_coords.push(current_point.into());
-                        generated_segments_coords.push(extended_forward.into());
-
-                        // 2. Segment: current_point -> extended_backward
-                        generated_segments_coords.push(current_point.into());
-                        generated_segments_coords.push(extended_backward.into());
-
-                        // 3. Segment: current_point -> extended_orthogonal_90
-                        generated_segments_coords.push(current_point.into());
-                        generated_segments_coords.push(extended_orthogonal_90.into());
-
-                        // 4. Segment: current_point -> extended_orthogonal_minus_90
-                        generated_segments_coords.push(current_point.into());
-                        generated_segments_coords.push(extended_orthogonal_minus_90.into());
-
-                        let generated_line_string = LineString::new(generated_segments_coords);
-
-                        // --- Store the generated geometry and original properties ---
-                        // DROPPING THE AMOUNT OF PROPERTIES HELPED REDUCING THE DATA FILE SIZE
-                        // EVENTUALLY THIS MADE THE ALGORITHM BENCHMARK MORE ACCURATE
-                        // THIS ALSO MEANS PERFORMANCE REGRESSIONS ARE MORE LIKELY TO BE RELATED
-                        // TO THE DATA SIZE ITSELF COMBINED WITH THE PROPERTY CLONING IN THE PROCESSING ALGORITHM
-                        // THAT IS NOW DISABLED BELOW
-                        generated_features.push((
-                            generated_line_string,
-                            // original_properties.clone().map(SerdeValue::Object),
-                            None,
-                        ));
-                    }; // End of generate_lines_at_point closure
-
                     // --- Process Multi-Segment LineStrings (length > 2) ---
                     if num_points > 2 {
-                        // println!("Processing multi-segment line ({} points).", num_points);
-
-                        // Iterate through inner vertices (index 1 to num_points - 2)
-                        for i in 1..(num_points - 1) {
-                            let p_previous = Point::from(coords[i - 1]);
-                            let p_current = Point::from(coords[i]);
-                            let p_next = Point::from(coords[i + 1]);
-
-                            let v_in = Point::new(
-                                p_current.x() - p_previous.x(),
-                                p_current.y() - p_previous.y(),
-                            );
-                            let v_out =
-                                Point::new(p_next.x() - p_current.x(), p_next.y() - p_current.y());
-                            let len_in = v_in.x().hypot(v_in.y());
-                            let len_out = v_out.x().hypot(v_out.y());
-
-                            // Skip bend check if either segment has zero length
-                            if len_in == 0.0 || len_out == 0.0 {
-                                // println!(
-                                //     "Skipping bend check at point {:?} due to zero-length segment.",
-                                //     p_current
-                                // );
-                                continue;
-                            }
-
-                            // Calculate dot product
-                            let dot_product = v_in.x() * v_out.x() + v_in.y() * v_out.y();
-
-                            // Calculate cosine of the angle
-                            let cos_theta = dot_product / (len_in * len_out);
-
-                            // Clamp cos_theta to handle potential floating point inaccuracies
-                            let cos_theta_clamped = cos_theta.clamp(-1.0, 1.0);
-
-                            // Calculate the angle between vectors (the turn angle) in radians
-                            let angle_radians = cos_theta_clamped.acos();
-
-                            // Check if the angle indicates a significant bend
-                            // We detect a bend if the turn angle is GREATER than the threshold
-                            if angle_radians.abs() > bend_threshold_radians {
-                                // println!(
-                                //     "Detected bend at point {:?} with angle {:.2} degrees. Generating lines.",
-                                //     p_current,
-                                //     angle_radians.to_degrees()
-                                // );
-
-                                // At bends, use the outgoing segment direction (v_out) for forward/orthogonal
-                                // and the incoming segment direction (v_in) for backward.
-                                generate_lines_at_point(
-                                    p_current, v_out, v_in,
-                                    // &feature.properties,
-                                );
-                            }
-                            // Else: No significant bend at this inner vertex, no lines generated in this block
-                        }
-
-                        // For multi-segment lines, the start and end points (coords[0] and coords[num_points-1])
-                        // might need separate processing if they are not covered by the bend logic.
-                        // Based on the TS, simple lines process ends. Multi-segment only process inner bends.
-                        // If you need to process ends of multi-segment lines too, add logic here
-                        // similar to the 2-point case, using the first/last segment directions.
-                        // println!(
-                        //     "Inner vertices of multi-segment line processed. Start/End points not processed in this block."
-                        // );
+                        let lines = process_multisegment_line(
+                            &coords,
+                            num_points,
+                            bend_threshold_radians,
+                            extension_distance,
+                        );
+                        generated_features.extend(lines);
                     }
                     // --- Process Simple 2-Point LineStrings ---
                     else if num_points == 2 {
-                        // println!("Processing simple 2-point line.");
-                        let p_start = Point::from(coords[0]);
-                        let p_end = Point::from(coords[1]);
-
-                        let direction_forward_segment =
-                            Point::new(p_end.x() - p_start.x(), p_end.y() - p_start.y());
-                        let direction_backward_segment =
-                            Point::new(p_start.x() - p_end.x(), p_start.y() - p_end.y());
-
-                        // Process the Start Point (index 0)
-                        // println!("Generating lines at start point {:?}.", p_start);
-                        // For the start point, forward is 0->1, backward is 1->0
-                        generate_lines_at_point(
-                            p_start,
-                            direction_forward_segment,
-                            direction_backward_segment,
-                            // &feature.properties,
-                        );
-
-                        // Process the End Point (index 1)
-                        // println!("Generating lines at end point {:?}.", p_end);
-                        // For the end point, forward is 1->0, backward is 0->1
-                        generate_lines_at_point(
-                            p_end,
-                            direction_backward_segment,
-                            direction_forward_segment,
-                            // &feature.properties,
-                        );
-                    } // Else: num_points < 2 handled at the beginning
+                        if let Some(lines) = process_simple_line(&coords, extension_distance) {
+                            generated_features.extend(lines);
+                        }
+                    }
                 }
                 _ => {
                     // Handle other geometry types if necessary
@@ -266,6 +86,230 @@ pub fn process_vertices_and_bends(
     }
 
     generated_features
+}
+
+/// Processes a simple 2-point LineString to generate lines at the start and end points.
+///
+/// # Arguments
+/// * `coords`: A slice of coordinates representing the LineString
+/// * `extension_distance`: The distance to extend the lines
+///
+/// # Returns
+/// A vector of (LineString) containing the generated geometry
+fn process_simple_line(coords: &[Coord<f64>], extension_distance: f64) -> Option<Vec<LineString<f64>>> {
+    let p_start = Point::from(coords[0]);
+    let p_end = Point::from(coords[1]);
+
+    let mut generated_features = Vec::new();
+
+    let direction_forward_segment = Point::new(p_end.x() - p_start.x(), p_end.y() - p_start.y());
+    let direction_backward_segment = Point::new(p_start.x() - p_end.x(), p_start.y() - p_end.y());
+
+    // Process the Start Point (index 0)
+    if let Some(start_line_string) = generate_lines_at_point(
+        p_start,
+        direction_forward_segment,
+        direction_backward_segment,
+        extension_distance,
+        // &feature.properties,
+    ) {
+        generated_features.push(start_line_string);
+    }
+
+    // Process the End Point (index 1)
+    if let Some(end_line_string) = generate_lines_at_point(
+        p_end,
+        direction_backward_segment,
+        direction_forward_segment,
+        extension_distance,
+        // &feature.properties,
+    ) {
+        generated_features.push(end_line_string);
+    }
+
+    Some(generated_features)
+}
+
+const EPSILON: f64 = 1e-10;
+fn is_zero_length(v: &Point<f64>) -> bool {
+    v.x().hypot(v.y()).abs() < EPSILON
+}
+
+/// Processes a multi-segment LineString to generate lines at each vertex.
+///
+/// # Arguments
+/// * `coords`: A slice of coordinates representing the LineString
+/// * `num_points`: The number of points in the LineString
+/// * `bend_threshold_radians`: The angle in radians to detect a bend at an inner vertex
+/// * `extension_distance`: The distance to extend the lines
+///
+/// # Returns
+/// A vector of (LineString) containing the generated geometry
+fn process_multisegment_line(
+    coords: &[Coord<f64>],
+    num_points: usize,
+    bend_threshold_radians: f64,
+    extension_distance: f64,
+) -> Vec<LineString<f64>> {
+    if num_points < 3 {
+        return Vec::new();
+    }
+
+    let mut generated_features = Vec::with_capacity(num_points);
+
+    // Iterate through inner vertices (index 1 to num_points - 2)
+    for i in 1..(num_points - 1) {
+        let p_previous = Point::from(coords[i - 1]);
+        let p_current = Point::from(coords[i]);
+        let p_next = Point::from(coords[i + 1]);
+
+        let v_in = Point::new(
+            p_current.x() - p_previous.x(),
+            p_current.y() - p_previous.y(),
+        );
+        let v_out = Point::new(p_next.x() - p_current.x(), p_next.y() - p_current.y());
+        let len_in = v_in.x().hypot(v_in.y());
+        let len_out = v_out.x().hypot(v_out.y());
+
+        // Skip bend check if either segment has zero length
+        if is_zero_length(&v_in) || is_zero_length(&v_out) {
+            continue;
+        }
+
+        // Calculate the dot product of the vectors, which is the cosine of the angle between them
+        // a · b = a_x * b_x + a_y * b_y
+        let dot_product = v_in.x() * v_out.x() + v_in.y() * v_out.y();
+
+        // Calculate the angle between vectors using the dot product formula:
+        // cos(θ) = (a · b) / (|a| * |b|)
+        // where a and b are the direction vectors
+        let cos_theta = dot_product / (len_in * len_out);
+
+        // Clamp cos_theta to handle potential floating point inaccuracies
+        let cos_theta_clamped = cos_theta.clamp(-1.0, 1.0);
+
+        // Calculate the angle between vectors (the turn angle) in radians
+        let angle_radians = cos_theta_clamped.acos();
+
+        // Check if the angle indicates a significant bend
+        // We detect a bend if the turn angle is GREATER than the threshold
+        if angle_radians.abs() > bend_threshold_radians {
+            // At bends, use the outgoing segment direction (v_out) for forward/orthogonal
+            // and the incoming segment direction (v_in) for backward.
+            if let Some(line_string) = generate_lines_at_point(
+                p_current,
+                v_out,
+                v_in,
+                extension_distance,
+            ) {
+                generated_features.push(line_string);
+            }
+        }
+    }
+
+    generated_features
+}
+
+/// Generates lines at a given point based on forward and backward direction vectors.
+///
+/// # Arguments
+/// * `current_point`: The point at which to generate lines
+/// * `forward_direction`: The direction vector for forward extension
+/// * `backward_direction`: The direction vector for backward extension
+/// * `extension_distance`: The distance to extend the lines
+///
+/// # Returns
+/// An Option containing the generated LineString, or None if the forward direction vector has zero length
+fn generate_lines_at_point(
+    current_point: Point<f64>,
+    forward_direction: Point<f64>,
+    backward_direction: Point<f64>,
+    extension_distance: f64,
+) -> Option<LineString<f64>> {
+    // Check if the forward direction vector has a non-zero length
+    let forward_length = forward_direction.x().hypot(forward_direction.y());
+    if is_zero_length(&forward_direction) {
+        return None;
+    }
+
+    // Normalize the forward direction vector
+    let unit_forward_direction = Point::new(
+        forward_direction.x() / forward_length,
+        forward_direction.y() / forward_length,
+    );
+
+    // Check if the backward direction vector has a non-zero length
+    let backward_length = backward_direction.x().hypot(backward_direction.y());
+    let unit_backward_direction = if is_zero_length(&backward_direction) {
+        Point::new(
+            backward_direction.x() / backward_length,
+            backward_direction.y() / backward_length,
+        )
+    } else {
+        // If backward direction is zero length, use the reverse of forward direction
+        Point::new(-unit_forward_direction.x(), -unit_forward_direction.y())
+    };
+
+    // --- Generate the four extended/rotated points ---
+
+    // Point extended forward along forward direction
+    let extended_forward = Point::new(
+        current_point.x() + unit_forward_direction.x() * extension_distance,
+        current_point.y() + unit_forward_direction.y() * extension_distance,
+    );
+
+    // Point extended backward along backward direction
+    let extended_backward = Point::new(
+        current_point.x() + unit_backward_direction.x() * extension_distance,
+        current_point.y() + unit_backward_direction.y() * extension_distance,
+    );
+
+    // Rotate the unit forward direction vector +90 degrees for orthogonal direction
+    let orthogonal_direction_90 = Point::new(
+        -unit_forward_direction.y(), // Rotated X
+        unit_forward_direction.x(),  // Rotated Y
+    );
+
+    // Rotate the unit forward direction vector -90 degrees for orthogonal direction
+    let orthogonal_direction_minus_90 = Point::new(
+        unit_forward_direction.y(),  // Rotated X
+        -unit_forward_direction.x(), // Rotated Y
+    );
+
+    // Point extended in +90 degree orthogonal direction
+    let extended_orthogonal_90 = Point::new(
+        current_point.x() + orthogonal_direction_90.x() * extension_distance,
+        current_point.y() + orthogonal_direction_90.y() * extension_distance,
+    );
+
+    // Point extended in -90 degree orthogonal direction
+    let extended_orthogonal_minus_90 = Point::new(
+        current_point.x() + orthogonal_direction_minus_90.x() * extension_distance,
+        current_point.y() + orthogonal_direction_minus_90.y() * extension_distance,
+    );
+
+    // --- Build the generated LineString for this point ---
+    let mut generated_segments_coords: Vec<Coord<f64>> = Vec::with_capacity(8);
+
+    // 1. Segment: current_point -> extended_forward
+    generated_segments_coords.push(current_point.into());
+    generated_segments_coords.push(extended_forward.into());
+
+    // 2. Segment: current_point -> extended_backward
+    generated_segments_coords.push(current_point.into());
+    generated_segments_coords.push(extended_backward.into());
+
+    // 3. Segment: current_point -> extended_orthogonal_90
+    generated_segments_coords.push(current_point.into());
+    generated_segments_coords.push(extended_orthogonal_90.into());
+
+    // 4. Segment: current_point -> extended_orthogonal_minus_90
+    generated_segments_coords.push(current_point.into());
+    generated_segments_coords.push(extended_orthogonal_minus_90.into());
+
+    let generated_line_string = LineString::new(generated_segments_coords);
+
+    Some(generated_line_string)
 }
 
 #[cfg(test)]
@@ -369,14 +413,9 @@ mod tests {
 
         // You can add more specific assertions here to check the properties or coordinates
         // of the generated LineStrings if needed.
-        for (i, (gen_geom, gen_props)) in generated_features.iter().enumerate() {
+        for (i, gen_geom) in generated_features.iter().enumerate() {
             println!("Generated Feature Set {}:", i);
             println!("  Geometry: {:?}", gen_geom);
-            if let Some(props) = gen_props {
-                println!("  Properties: {:?}", props);
-            } else {
-                println!("  Properties: None");
-            }
             assert_eq!(
                 gen_geom.coords().count(),
                 8,
