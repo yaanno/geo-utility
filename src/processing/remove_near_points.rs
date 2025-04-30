@@ -63,6 +63,7 @@ impl Into<geojson::Geometry> for Geometry {
     }
 }
 
+#[allow(dead_code)]
 pub fn remove_near_points(collection: &FeatureCollection) -> FeatureCollection {
     let mut coll = FeatureCollection {
         bbox: collection.bbox.clone(),

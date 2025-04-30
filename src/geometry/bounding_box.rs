@@ -1,7 +1,7 @@
-use crate::geometry::Rectangle;
-use crate::grouping::{group_rects_by_overlap, merge_components};
-use crate::utils::{
-    create_square_grid, expand_bounding_box, is_boundingbox_in_germany, is_coordinate_in_germany,
+use crate::utils::geometry::{Rectangle, RectangleWithId};
+use crate::processing::grouping::{group_rects_by_overlap, merge_components, index_rectangles};
+use crate::utils::utils::{
+    create_square_grid, expand_bounding_box, is_boundingbox_in_germany, is_coordinate_in_germany, 
 };
 use geo::geometry::LineString as GeoLineString;
 use geo::{BoundingRect, ConvexHull, Coord, MultiPoint, Point, Rect};
@@ -98,7 +98,7 @@ pub fn collect_bounding_boxes(
     let uf = group_rects_by_overlap(&rectangles);
     let merged_rectangles: Vec<Rectangle> = merge_components(&rectangles, uf);
 
-    let tree = crate::grouping::index_rectangles(&merged_rectangles);
+    let tree = index_rectangles(&merged_rectangles);
 
     let grid_cells_intersecting_shapes =
         create_transformed_grid_cells(proj_transformer_reverse, initial_grid_cells, tree);
@@ -120,7 +120,7 @@ pub fn collect_bounding_boxes(
 fn create_transformed_grid_cells(
     proj_transformer_reverse: Proj,
     initial_grid_cells: Vec<Rect>,
-    tree: rstar::RTree<crate::geometry::RectangleWithId>,
+    tree: rstar::RTree<RectangleWithId>,
 ) -> Result<Vec<Rectangle>, CollectBoundingBoxError> {
     let grid_cells_intersecting_shapes: Vec<Rectangle> = initial_grid_cells
         .into_iter()

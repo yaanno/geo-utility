@@ -1,28 +1,6 @@
-mod collect_bounding_boxes;
-mod collect_convex_boundingboxes;
-mod extend_features;
-mod extend_straight_line;
-mod generate_synthetic_complex_featurecollection;
-mod generate_synthetic_featurecollection;
-mod generate_synthetic_linestrings;
-mod geometry;
-mod grouping;
-mod pick_features_by_boundingbox;
-mod process_vertices_and_bends;
-mod remove_near_points;
-mod scale_buildings;
-mod utils;
-mod bounding_box_test;
-pub use collect_bounding_boxes::collect_bounding_boxes;
-pub use collect_convex_boundingboxes::collect_convex_boundingboxes;
-pub use extend_features::extend_features;
-pub use extend_straight_line::extend_straight_line;
-pub use generate_synthetic_complex_featurecollection::generate_synthetic_complex_featurecollection;
-pub use generate_synthetic_featurecollection::generate_synthetic_featurecollection;
-pub use generate_synthetic_linestrings::generate_synthetic_linestrings;
-pub use pick_features_by_boundingbox::pick_features_by_boundingbox;
-pub use process_vertices_and_bends::process_vertices_and_bends;
-pub use remove_near_points::remove_near_points;
-pub use scale_buildings::scale_buildings;
-pub use bounding_box_test::calculate_bounding_box;
-pub use collect_bounding_boxes::Radius;
+// 
+
+pub mod geometry;
+pub mod processing;
+pub mod utils;
+pub mod generation;

@@ -2,6 +2,7 @@ use geo::{
     Bearing, Destination, Distance, Geodesic, algorithm::line_measures::metric_spaces::Euclidean,
 };
 
+#[allow(dead_code)]
 /// Extends a straight line from point A to point B by a specified distance.
 ///
 /// # Arguments

@@ -1,15 +1,15 @@
 use std::fs::File;
 use std::io::Write;
 
-use geo_utility::{
-    calculate_bounding_box, generate_synthetic_complex_featurecollection,
-    generate_synthetic_featurecollection, generate_synthetic_linestrings,
-}; // Assuming it's public
+use geo_utility::generation::complex::generate_synthetic_complex_featurecollection;
+use geo_utility::generation::linestrings::generate_synthetic_linestrings;
+use geo_utility::generation::featurecollection::generate_synthetic_featurecollection;
+
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // generate_synthetic_collection_data()?;
     generate_synthetic_complex_collection_data()?;
-    calculate_bounding_box();
+    // calculate_bounding_box();
 
     Ok(())
 }

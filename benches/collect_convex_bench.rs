@@ -3,7 +3,7 @@ use std::io::Read;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
-use geo_utility::collect_convex_boundingboxes;
+use geo_utility::geometry::convex_hull::collect_convex_boundingboxes;
 use geojson::FeatureCollection;
 
 fn load_features_from_file(file_path: &str) -> FeatureCollection {

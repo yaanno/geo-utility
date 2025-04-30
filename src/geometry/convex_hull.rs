@@ -8,7 +8,7 @@ use ordered_float::OrderedFloat;
 use std::collections::HashSet;
 use thiserror::Error;
 
-use crate::utils::is_coordinate_in_germany;
+use crate::utils::utils::is_coordinate_in_germany;
 
 // Define error type (kept as is, though less frequently returned now)
 #[derive(Error, Debug)]

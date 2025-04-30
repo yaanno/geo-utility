@@ -3,7 +3,7 @@ use std::io::Read;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
-use geo_utility::scale_buildings;
+use geo_utility::geometry::scaling::scale_buildings;
 use geojson::FeatureCollection;
 
 fn load_features_from_file(file_path: &str) -> FeatureCollection {

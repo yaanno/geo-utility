@@ -3,8 +3,7 @@ use std::io::Read;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
-use geo_utility::collect_bounding_boxes;
-use geo_utility::Radius;
+use geo_utility::geometry::bounding_box::{collect_bounding_boxes, Radius};
 use geojson::FeatureCollection;     
 
 fn load_features_from_file(file_path: &str) -> FeatureCollection {

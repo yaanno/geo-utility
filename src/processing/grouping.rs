@@ -1,4 +1,4 @@
-use crate::geometry::{Rectangle, RectangleWithId};
+use crate::utils::geometry::{Rectangle, RectangleWithId};
 use rstar::{RTree, RTreeObject};
 use std::collections::HashMap;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};

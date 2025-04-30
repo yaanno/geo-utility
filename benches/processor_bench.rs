@@ -3,7 +3,7 @@ use std::io::Read;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
-use geo_utility::process_vertices_and_bends;
+use geo_utility::processing::process_vertices_and_bends::process_vertices_and_bends;
 use geojson::Feature;
 
 fn load_features_from_file(file_path: &str) -> Vec<Feature> {
