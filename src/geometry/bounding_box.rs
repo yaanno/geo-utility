@@ -1,7 +1,7 @@
 use crate::utils::geometry::{Rectangle, RectangleWithId};
 use crate::processing::grouping::{group_rects_by_overlap, merge_components, index_rectangles};
 use crate::utils::utils::{
-    create_square_grid, expand_bounding_box, is_boundingbox_in_germany, is_coordinate_in_germany, 
+    BoundingBoxOps, Grid, InBoundingBox, GERMANY_BBOX
 };
 use geo::geometry::LineString as GeoLineString;
 use geo::{BoundingRect, ConvexHull, Coord, MultiPoint, Point, Rect};
@@ -175,11 +175,11 @@ fn calculate_initial_grid_cells(
         }
         let calculated_cell_size_meters = area_per_cell.sqrt();
 
-        initial_grid_cells = create_square_grid(
+        initial_grid_cells = Grid::new(
             overall_initial_extent,
             calculated_cell_size_meters,
             calculated_cell_size_meters,
-        );
+        ).cells;
     } else {
         return Err(CollectBoundingBoxError::InvalidCellSize);
     }
@@ -206,7 +206,7 @@ fn collect_initial_buffered_rects(
     for feature in &featurecollection.features {
         // 0. Early Filtering using Feature Bounding Box
         if let Some(feature_bbox_value) = &feature.bbox {
-            if !is_boundingbox_in_germany(feature_bbox_value) {
+            if !feature_bbox_value.in_bounding_box(&GERMANY_BBOX) {
                 continue;
             }
         }
@@ -225,7 +225,7 @@ fn collect_initial_buffered_rects(
                     x: coord[0],
                     y: coord[1],
                 };
-                if is_coordinate_in_germany(&coord) {
+                if geo_coord.in_bounding_box(&GERMANY_BBOX) {
                     coords.push(geo_coord);
                 } else {
                     all_points_in_germany = false;
@@ -238,7 +238,7 @@ fn collect_initial_buffered_rects(
                     .collect();
                 if line_coords_geo
                     .iter()
-                    .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
+                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
                 {
                     all_points_in_germany = false;
                 } else {
@@ -278,7 +278,7 @@ fn collect_initial_buffered_rects(
             let fallback_bbox_projected = projected_geometry_to_process.bounding_rect();
 
             if let Some(bounding_box) = fallback_bbox_projected {
-                let expanded_bounding_box = expand_bounding_box(&bounding_box, radius);
+                let expanded_bounding_box = bounding_box.expand(radius);
                 bounding_boxes.push(expanded_bounding_box);
             }
         } else {
@@ -286,7 +286,7 @@ fn collect_initial_buffered_rects(
             let bounding_box = multi_point_projected.convex_hull().bounding_rect();
 
             if let Some(bounding_box) = bounding_box {
-                let expanded_bounding_box = expand_bounding_box(&bounding_box, radius);
+                let expanded_bounding_box = bounding_box.expand(radius);
                 bounding_boxes.push(expanded_bounding_box);
             }
         }

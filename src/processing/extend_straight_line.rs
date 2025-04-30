@@ -20,7 +20,7 @@ use geo::{
 ///
 /// ```rust
 /// use geo::Point;
-/// use geo_utility::extend_straight_line;
+/// use geo_utility::processing::extend_straight_line::extend_straight_line;
 ///
 /// let point_a = Point::new(0.0, 0.0);
 /// let point_b = Point::new(1.0, 1.0);

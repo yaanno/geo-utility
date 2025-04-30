@@ -39,3 +39,14 @@ coverage/
 
 # Benchmark sample data
 synthetic_data_*.geojson
+
+# Benchmark output
+*.out
+*.log
+*.csv
+*.txt
+
+# Misc
+*.svg
+*.pdf
+*.zip

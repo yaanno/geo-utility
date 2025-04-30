@@ -1,123 +1,134 @@
-use geo::{BoundingRect, Coord, Intersects, Rect};
+use geo::{BoundingRect, Contains, Coord, Intersects, Point, Rect};
 
-const GERMANY_BBOX: [f64; 4] = [
+pub const GERMANY_BBOX: [f64; 4] = [
     5.866211,  // Min longitude
     47.270111, // Min latitude
     15.013611, // Max longitude
     55.058333, // Max latitude
 ];
-/// Checks if a coordinate is within the bounding box of Germany.
-///
-/// # Arguments
-/// * `coord` - The coordinate to check.
-/// # Returns
-/// `true` if the coordinate is within the bounding box, `false` otherwise.
-pub fn is_coordinate_in_germany(coord: &[f64]) -> bool {
-    // Ensure coord has at least 2 elements (longitude, latitude)
-    if coord.len() < 2 {
-        return false; // Cannot check if coords are invalid
+
+
+/// Trait for checking if a geographic coordinate is within a specific bounding box.
+pub trait InBoundingBox {
+    /// Checks if the coordinate is within the specified bounding box.
+    /// 
+    /// # Arguments
+    /// * `bbox`: The bounding box to check against
+    /// 
+    /// # Returns
+    /// * `true` if the coordinate is within the bounding box, `false` otherwise
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool;
+}
+
+/// Trait for expanding and extending bounding boxes.
+pub trait BoundingBoxOps {
+    /// Expands a bounding box by a given radius.
+    /// 
+    /// # Arguments
+    /// * `radius`: The amount to expand the box by
+    /// 
+    /// # Returns
+    /// A new expanded bounding box
+    fn expand(&self, radius: f64) -> Rect;
+    
+    #[allow(dead_code)]
+    /// Extends a bounding box to align with a grid of specified cell size.
+    /// 
+    /// # Arguments
+    /// * `cell_size`: The size of the grid cells
+    /// 
+    /// # Returns
+    /// A new extended bounding box
+    fn extend(&self, cell_size: f64) -> Rect;
+}
+
+impl InBoundingBox for [f64; 2] {
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool {
+        let point = Point::new(self[0], self[1]);
+        let rect = Rect::new(
+            Coord { x: bbox[0], y: bbox[1] },
+            Coord { x: bbox[2], y: bbox[3] },
+        );
+        rect.contains(&point)
     }
-
-    coord[0] >= GERMANY_BBOX[0]
-        && coord[0] <= GERMANY_BBOX[2]
-        && coord[1] >= GERMANY_BBOX[1]
-        && coord[1] <= GERMANY_BBOX[3]
 }
 
-pub fn is_boundingbox_in_germany(coords: &Vec<f64>) -> bool {
-    if coords.len() < 4 {
-        return false;
+impl InBoundingBox for Vec<f64> {
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool {
+        if self.len() != 4 {
+            return false;
+        }
+        let coords = Rect::new(
+            Coord { x: self[0], y: self[1] },
+            Coord { x: self[2], y: self[3] },
+        );
+        let rect = Rect::new(
+            Coord { x: bbox[0], y: bbox[1] },
+            Coord { x: bbox[2], y: bbox[3] },
+        );
+        rect.intersects(&coords)
     }
-    let coords = Rect::new(
-        Coord {
-            x: coords[0],
-            y: coords[1],
-        },
-        Coord {
-            x: coords[2],
-            y: coords[3],
-        },
-    );
-    let germany_rect = Rect::new(
-        Coord {
-            x: GERMANY_BBOX[0],
-            y: GERMANY_BBOX[1],
-        },
-        Coord {
-            x: GERMANY_BBOX[2],
-            y: GERMANY_BBOX[3],
-        },
-    );
-
-    coords.intersects(&germany_rect)
 }
 
-#[allow(dead_code)]
-/// Expands a bounding box by a given radius.
-///
-/// # Arguments
-/// * `bbox` - The bounding box to expand.
-/// * `radius` - The radius by which to expand the bounding box.
-/// # Returns
-/// The expanded bounding box.
-pub fn expand_bounding_box(bbox: &Rect, radius: f64) -> Rect {
-    let expansion_amount = if radius == 0.0 { 4.0 } else { radius };
-    let expanded_min_x = bbox.min().x - expansion_amount;
-    let expanded_max_x = bbox.max().x + expansion_amount;
-    let expanded_min_y = bbox.min().y - expansion_amount;
-    let expanded_max_y = bbox.max().y + expansion_amount;
-    Rect::new(
-        Coord {
-            x: expanded_min_x,
-            y: expanded_min_y,
-        },
-        Coord {
-            x: expanded_max_x,
-            y: expanded_max_y,
-        },
-    )
+impl InBoundingBox for geo::Coord {
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool {
+        let point = Point::new(self.x, self.y);
+        let rect = Rect::new(
+            Coord { x: bbox[0], y: bbox[1] },
+            Coord { x: bbox[2], y: bbox[3] },
+        );
+        rect.contains(&point)
+    }
 }
 
-#[allow(dead_code)]
-/// Extends a bounding box to ensure it is a multiple of a given area length.
-///
-/// # Arguments
-/// * `bbox` - The bounding box to extend.
-/// * `area_length` - The length of the area to which the bounding box should be extended.
-/// # Returns
-/// The extended bounding box.
-pub fn extend_bounding_box(bbox: &Rect, area_length: f64) -> Rect {
-    let width = bbox.width();
-    let height = bbox.height();
-
-    let length_width = if width < area_length {
-        area_length + 1.0 - width
-    } else {
-        area_length + 1.0 - (width % area_length)
-    };
-
-    let length_height = if height < area_length {
-        area_length + 1.0 - height
-    } else {
-        area_length + 1.0 - (height % area_length)
-    };
-
-    let new_min_x = bbox.min().x - length_width / 2.0;
-    let new_min_y = bbox.min().y - length_height / 2.0;
-    let new_max_x = bbox.max().x + length_width / 2.0;
-    let new_max_y = bbox.max().y + length_height / 2.0;
-
-    Rect::new(
-        Coord {
-            x: new_min_x,
-            y: new_min_y,
-        },
-        Coord {
-            x: new_max_x,
-            y: new_max_y,
-        },
-    )
+impl BoundingBoxOps for Rect {
+    fn expand(&self, radius: f64) -> Rect {
+        let expansion_amount = if radius == 0.0 { 4.0 } else { radius };
+        let expanded_min_x = self.min().x - expansion_amount;
+        let expanded_max_x = self.max().x + expansion_amount;
+        let expanded_min_y = self.min().y - expansion_amount;
+        let expanded_max_y = self.max().y + expansion_amount;
+        Rect::new(
+            Coord {
+                x: expanded_min_x,
+                y: expanded_min_y,
+            },
+            Coord {
+                x: expanded_max_x,
+                y: expanded_max_y,
+            },
+        )
+    }
+    
+    fn extend(&self, cell_size: f64) -> Rect {
+        if cell_size <= 0.0 {
+            return *self;
+        }
+        
+        let width = self.width();
+        let height = self.height();
+        
+        let extra_width = cell_size * ((width / cell_size).ceil() - (width / cell_size));
+        let extra_height = cell_size * ((height / cell_size).ceil() - (height / cell_size));
+        
+        let new_min_x = self.min().x - extra_width / 2.0;
+        let new_min_y = self.min().y - extra_height / 2.0;
+        let new_max_x = self.max().x + extra_width / 2.0;
+        let new_max_y = self.max().y + extra_height / 2.0;
+        
+        Rect::new(
+            Coord {
+                x: new_min_x,
+                y: new_min_y,
+            },
+            Coord {
+                x: new_max_x,
+                y: new_max_y,
+            },
+        )
+    }
 }
+
 
 #[allow(dead_code)]
 pub fn convert_polygons_to_bounding_boxes(polygons: Vec<geo::Polygon>) -> Vec<Rect> {
@@ -127,61 +138,63 @@ pub fn convert_polygons_to_bounding_boxes(polygons: Vec<geo::Polygon>) -> Vec<Re
         .collect()
 }
 
-/// Creates a square grid from a bounding box with specified cell dimensions.
-///
-/// # Arguments
-/// * `bbox` - The bounding box from which to create the grid.
-/// * `cell_width` - The width of each cell in the grid.
-/// * `cell_height` - The height of each cell in the grid.
-/// # Returns
-/// A vector of rectangles representing the grid cells.
-pub fn create_square_grid(bbox: Rect, cell_width: f64, cell_height: f64) -> Vec<Rect> {
-    let mut grid = Vec::new();
+#[allow(dead_code)]
+pub struct Grid {
+    pub cells: Vec<Rect>,
+    num_cols: usize,
+    num_rows: usize,
+    cell_width: f64,
+    cell_height: f64,
+}
 
-    // Ensure cell dimensions are positive to avoid infinite loops
-    if cell_width <= 0.0 || cell_height <= 0.0 {
-        return grid;
-    }
+impl Grid {
+    pub fn new(bbox: Rect, cell_width: f64, cell_height: f64) -> Self {
+        if cell_width <= 0.0 || cell_height <= 0.0 {
+            return Self::empty();
+        }
+    
+        let bbox_min_x = bbox.min().x;
+        let bbox_min_y = bbox.min().y;
+        let bbox_max_x = bbox.max().x;
+        let bbox_max_y = bbox.max().y;
+    
+        // Handle cases where bbox is degenerate or inverted (max <= min)
+        if bbox_min_x >= bbox_max_x || bbox_min_y >= bbox_max_y {
+            return Self::empty();
+        }
 
-    let bbox_min_x = bbox.min().x;
-    let bbox_min_y = bbox.min().y;
-    let bbox_max_x = bbox.max().x;
-    let bbox_max_y = bbox.max().y;
-
-    // Handle cases where bbox is degenerate or inverted (max <= min)
-    if bbox_min_x >= bbox_max_x || bbox_min_y >= bbox_max_y {
-        return grid;
-    }
-
-    let mut x = bbox_min_x;
-    while x < bbox_max_x {
-        let mut y = bbox_min_y;
-        while y < bbox_max_y {
-            // Calculate the top-right corner of the current cell
-            // Clip to the bounding box's maximum x and y if necessary
-            let current_cell_max_x = f64::min(x + cell_width, bbox_max_x);
-            let current_cell_max_y = f64::min(y + cell_height, bbox_max_y);
-
-            // Create the rectangle for the current cell
-            let cell_rect = Rect::new(
-                Coord { x, y },
-                Coord {
-                    x: current_cell_max_x,
-                    y: current_cell_max_y,
+        let num_cols = ((bbox_max_x - bbox_min_x) / cell_width).ceil() as usize;
+        let num_rows = ((bbox_max_y - bbox_min_y) / cell_height).ceil() as usize;
+        let mut cells = Vec::with_capacity(num_cols * num_rows);
+    
+        for i in 0..num_cols {
+            let x = bbox_min_x + (i as f64 * cell_width);
+            for j in 0..num_rows {
+                let y = bbox_min_y + (j as f64 * cell_height);
+                let cell_rect = Rect::new(
+                    Coord { x, y },
+                    Coord {
+                    x: f64::min(x + cell_width, bbox_max_x),
+                    y: f64::min(y + cell_height, bbox_max_y),
                 },
             );
-
-            // Add the cell to the grid
-            grid.push(cell_rect);
-
-            // Move the y-cursor to the start of the next row
-            y += cell_height;
+            cells.push(cell_rect);
         }
-        // Move the x-cursor to the start of the next column
-        x += cell_width;
+    }
+    
+        Self { cells, num_cols, num_rows, cell_width, cell_height }
     }
 
-    grid
+    pub fn empty() -> Self {
+        Self {
+            cells: Vec::new(),
+            num_cols: 0,
+            num_rows: 0,
+            cell_width: 0.0,
+            cell_height: 0.0,
+        }
+    }
+
 }
 
 #[allow(unused_imports)]
@@ -205,9 +218,9 @@ mod tests {
 
         let expected_grid = vec![r(0.0, 0.0, 200.0, 200.0)];
 
-        let grid = create_square_grid(bbox, cell_width, cell_height);
-        assert_eq!(grid.len(), expected_grid.len());
-        assert_eq!(grid, expected_grid);
+        let grid = Grid::new(bbox, cell_width, cell_height);
+        assert_eq!(grid.cells.len(), expected_grid.len());
+        assert_eq!(grid.cells, expected_grid);
     }
 
     #[test]
@@ -223,11 +236,11 @@ mod tests {
             r(200.0, 200.0, 400.0, 400.0),
         ];
 
-        let grid = create_square_grid(bbox, cell_width, cell_height);
+        let grid = Grid::new(bbox, cell_width, cell_height);
 
         // Sort both vectors for reliable comparison, as the order might depend on loop implementation
         let mut grid_sorted = grid;
-        grid_sorted.sort_by(|a, b| {
+        grid_sorted.cells.sort_by(|a, b| {
             a.min()
                 .x
                 .partial_cmp(&b.min().x)
@@ -253,8 +266,8 @@ mod tests {
                 )
         });
 
-        assert_eq!(grid_sorted.len(), expected_grid_sorted.len());
-        assert_eq!(grid_sorted, expected_grid_sorted);
+        assert_eq!(grid_sorted.cells.len(), expected_grid_sorted.len());
+        assert_eq!(grid_sorted.cells, expected_grid_sorted);
     }
 
     #[test]
@@ -274,11 +287,11 @@ mod tests {
             r(400.0, 200.0, 450.0, 350.0), // Clipped x and y
         ];
 
-        let grid = create_square_grid(bbox, cell_width, cell_height);
+        let grid = Grid::new(bbox, cell_width, cell_height);
 
         // Sort both vectors for reliable comparison
         let mut grid_sorted = grid;
-        grid_sorted.sort_by(|a, b| {
+        grid_sorted.cells.sort_by(|a, b| {
             a.min()
                 .x
                 .partial_cmp(&b.min().x)
@@ -304,8 +317,8 @@ mod tests {
                 )
         });
 
-        assert_eq!(grid_sorted.len(), expected_grid_sorted.len());
-        assert_eq!(grid_sorted, expected_grid_sorted);
+        assert_eq!(grid_sorted.cells.len(), expected_grid_sorted.len());
+        assert_eq!(grid_sorted.cells, expected_grid_sorted);
     }
 
     #[test]
@@ -317,9 +330,9 @@ mod tests {
         // Should result in a single cell clipped to the bbox
         let expected_grid = vec![r(10.0, 20.0, 50.0, 70.0)];
 
-        let grid = create_square_grid(bbox, cell_width, cell_height);
-        assert_eq!(grid.len(), expected_grid.len());
-        assert_eq!(grid, expected_grid);
+        let grid = Grid::new(bbox, cell_width, cell_height);
+        assert_eq!(grid.cells.len(), expected_grid.len());
+        assert_eq!(grid.cells, expected_grid);
     }
 
     #[test]
@@ -330,9 +343,9 @@ mod tests {
 
         let expected_grid: Vec<Rect> = vec![]; // Should return empty grid
 
-        let grid = create_square_grid(bbox, cell_width, cell_height);
-        assert_eq!(grid.len(), expected_grid.len());
-        assert_eq!(grid, expected_grid);
+        let grid = Grid::new(bbox, cell_width, cell_height);
+        assert_eq!(grid.cells.len(), expected_grid.len());
+        assert_eq!(grid.cells, expected_grid);
     }
 
     #[test]
@@ -343,9 +356,9 @@ mod tests {
 
         let expected_grid: Vec<Rect> = vec![]; // Should return empty grid
 
-        let grid = create_square_grid(bbox, cell_width, cell_height);
-        assert_eq!(grid.len(), expected_grid.len());
-        assert_eq!(grid, expected_grid);
+        let grid = Grid::new(bbox, cell_width, cell_height);
+        assert_eq!(grid.cells.len(), expected_grid.len());
+        assert_eq!(grid.cells, expected_grid);
     }
 
     #[test]
@@ -356,9 +369,9 @@ mod tests {
 
         let expected_grid: Vec<Rect> = vec![]; // Should return empty grid
 
-        let grid = create_square_grid(bbox, cell_width, cell_height);
-        assert_eq!(grid.len(), expected_grid.len());
-        assert_eq!(grid, expected_grid);
+        let grid = Grid::new(bbox, cell_width, cell_height);
+        assert_eq!(grid.cells.len(), expected_grid.len());
+        assert_eq!(grid.cells, expected_grid);
     }
 
     #[test]
@@ -390,11 +403,11 @@ mod tests {
             r(50.0, 50.0, 100.0, 100.0),
         ];
 
-        let grid = create_square_grid(bbox, cell_width, cell_height);
+        let grid = Grid::new(bbox, cell_width, cell_height);
 
         // Sort both vectors for reliable comparison
         let mut grid_sorted = grid;
-        grid_sorted.sort_by(|a, b| {
+        grid_sorted.cells.sort_by(|a, b| {
             a.min()
                 .x
                 .partial_cmp(&b.min().x)
@@ -420,7 +433,7 @@ mod tests {
                 )
         });
 
-        assert_eq!(grid_sorted.len(), expected_grid_sorted.len());
-        assert_eq!(grid_sorted, expected_grid_sorted);
+        assert_eq!(grid_sorted.cells.len(), expected_grid_sorted.len());
+        assert_eq!(grid_sorted.cells, expected_grid_sorted);
     }
 }

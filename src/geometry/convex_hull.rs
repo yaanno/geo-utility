@@ -8,7 +8,7 @@ use ordered_float::OrderedFloat;
 use std::collections::HashSet;
 use thiserror::Error;
 
-use crate::utils::utils::is_coordinate_in_germany;
+use crate::utils::utils::{InBoundingBox, GERMANY_BBOX};
 
 // Define error type (kept as is, though less frequently returned now)
 #[derive(Error, Debug)]
@@ -118,7 +118,7 @@ pub fn collect_convex_boundingboxes(
                     x: coord[0],
                     y: coord[1],
                 };
-                if is_coordinate_in_germany(&coord) {
+                if geo_coord.in_bounding_box(&GERMANY_BBOX) {
                     coords.push(geo_coord); // Use for unique count check
                     geometry_to_process = Some(geo::Geometry::Point(Point::from(geo_coord))); // Create geo::Point for bbox
                 } else {
@@ -132,7 +132,7 @@ pub fn collect_convex_boundingboxes(
                     .collect();
                 if line_coords_geo
                     .iter()
-                    .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
+                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
                 {
                     all_points_in_germany = false;
                 } else {
@@ -151,7 +151,7 @@ pub fn collect_convex_boundingboxes(
                         .collect();
                     if exterior_ring_geo_coords
                         .iter()
-                        .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
+                        .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
                     {
                         all_points_in_germany = false;
                     } else {
@@ -174,7 +174,7 @@ pub fn collect_convex_boundingboxes(
                     .collect();
                 if multipoint_geo_coords
                     .iter()
-                    .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
+                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
                 {
                     all_points_in_germany = false;
                 } else {
@@ -194,7 +194,7 @@ pub fn collect_convex_boundingboxes(
                     .collect();
                 if multiline_geo_coords
                     .iter()
-                    .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
+                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
                 {
                     all_points_in_germany = false;
                 } else {
@@ -222,7 +222,7 @@ pub fn collect_convex_boundingboxes(
 
                 if all_exterior_coords
                     .iter()
-                    .any(|c| !is_coordinate_in_germany(&[c.x, c.y]))
+                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
                 {
                     all_points_in_germany = false;
                 } else {
@@ -321,13 +321,12 @@ mod tests {
     #[test]
     fn test_is_coordinate_in_germany() {
         // Point inside Germany BBOX
-        assert!(is_coordinate_in_germany(&[10.0, 50.0]));
+        assert!([10.0, 50.0].in_bounding_box(&GERMANY_BBOX));
         // Point outside Germany BBOX
-        assert!(!is_coordinate_in_germany(&[0.0, 0.0]));
-        assert!(!is_coordinate_in_germany(&[20.0, 50.0])); // Outside max longitude
-        assert!(!is_coordinate_in_germany(&[10.0, 40.0])); // Outside min latitude
-        assert!(!is_coordinate_in_germany(&[10.0, 60.0])); // Outside max latitude
-        assert!(!is_coordinate_in_germany(&[0.0])); // Malformed coord
+        assert!(![0.0, 0.0].in_bounding_box(&GERMANY_BBOX));
+        assert!(![20.0, 50.0].in_bounding_box(&GERMANY_BBOX)); // Outside max longitude
+        assert!(![10.0, 40.0].in_bounding_box(&GERMANY_BBOX)); // Outside min latitude
+        assert!(![10.0, 60.0].in_bounding_box(&GERMANY_BBOX)); // Outside max latitude
     }
 
     // --- Tests for Empty or Skipped Inputs ---
