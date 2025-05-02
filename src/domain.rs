@@ -29,7 +29,6 @@ pub enum Error {
 pub struct CapturedMarker {
     pub id: String,                                    // From feature.id
     pub geometry: Point,                               // Assuming Markers are always Points
-    pub object_id_name: String,                        // From inner "objectId"
     pub original_inner_properties: Map<String, Value>, // Store original inner map
 }
 
@@ -221,7 +220,6 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
                         Ok(ObjectId::Kugelmarker) => DomainEntity::CapturedMarker(CapturedMarker {
                             id: feature_id,
                             geometry: point_geometry,
-                            object_id_name: object_id_value.to_string(),
                             original_inner_properties: inner_properties, /* other fields */
                         }),
                         Ok(ObjectId::Versorgungspunkt) => DomainEntity::SupplyPoint(SupplyPoint {
@@ -332,38 +330,13 @@ fn convert_point_entity_to_geojson_feature(point_entity: &DomainEntity) -> Featu
     let geometry = Geometry::from(&geo);
     let mut properties = Map::new();
     let id = point_entity.id();
-    match point_entity {
-        DomainEntity::CapturedMarker(marker) => {
-            properties.insert(
-                "original_inner_props".to_string(),
-                Value::Object(marker.original_inner_properties.clone()),
-            );
-        }
-        DomainEntity::SupplyPoint(point) => {
-            properties.insert(
-                "original_inner_props".to_string(),
-                Value::Object(point.original_inner_properties.clone()),
-            );
-        }
-        DomainEntity::OperationSite(site) => {
-            properties.insert(
-                "original_inner_props".to_string(),
-                Value::Object(site.original_inner_properties.clone()),
-            );
-        }
-        DomainEntity::DrillingPoint(point) => {
-            properties.insert(
-                "original_inner_props".to_string(),
-                Value::Object(point.original_inner_properties.clone()),
-            );
-        }
-        DomainEntity::CableTunnel(tunnel) => {
-            properties.insert(
-                "original_inner_props".to_string(),
-                Value::Object(tunnel.original_inner_properties.clone()),
-            );
-        }
-        _ => unimplemented!(),
+    let original_inner_properties = point_entity.original_inner_properties().clone();
+    properties.insert("properties".to_string(), Value::Object(original_inner_properties));
+
+    // Optionally add specific fields here if needed in the output properties,
+    // accessing them via pattern matching or helper methods if they exist on the enum
+    if let DomainEntity::CapturedMarker(_marker) = point_entity {
+        properties.insert("objectId".to_string(), Value::String("Kugelmarker".to_string()));
     }
 
     Feature {
@@ -378,20 +351,15 @@ fn convert_point_entity_to_geojson_feature(point_entity: &DomainEntity) -> Featu
 #[allow(dead_code)]
 fn convert_domain_entity_to_geojson_feature(domain_entity: DomainEntity) -> Feature {
     match domain_entity {
-        DomainEntity::CapturedMarker(marker) => {
-            convert_point_entity_to_geojson_feature(&DomainEntity::CapturedMarker(marker))
-        }
-        DomainEntity::SupplyPoint(supply_point) => {
-            convert_point_entity_to_geojson_feature(&DomainEntity::SupplyPoint(supply_point))
-        }
-        DomainEntity::OperationSite(operation_site) => {
-            convert_point_entity_to_geojson_feature(&DomainEntity::OperationSite(operation_site))
-        }
-        DomainEntity::DrillingPoint(drilling_point) => {
-            convert_point_entity_to_geojson_feature(&DomainEntity::DrillingPoint(drilling_point))
-        }
-        DomainEntity::CableTunnel(cable_tunnel) => {
-            convert_point_entity_to_geojson_feature(&DomainEntity::CableTunnel(cable_tunnel))
+        // Match all Point variants and bind the enum value to `point_entity`
+        point_entity @ DomainEntity::CapturedMarker(_) |
+        point_entity @ DomainEntity::SupplyPoint(_) |
+        point_entity @ DomainEntity::OperationSite(_) |
+        point_entity @ DomainEntity::DrillingPoint(_) |
+        point_entity @ DomainEntity::CableTunnel(_) => {
+            // `point_entity` is the owned DomainEntity value (e.g., DomainEntity::CapturedMarker(...))
+            // Pass a reference to this value to the helper
+            convert_point_entity_to_geojson_feature(&point_entity)
         }
         DomainEntity::Unknown(feature) => feature,
     }
@@ -552,7 +520,6 @@ mod tests {
         let domain_entity = DomainEntity::CapturedMarker(CapturedMarker {
             id: "1".to_string(),
             geometry: Point::new(0.0, 0.0),
-            object_id_name: "Kugelmarker".to_string(),
             original_inner_properties: Map::new(),
         });
         let geojson_feature = convert_domain_entity_to_geojson_feature(domain_entity);
@@ -580,7 +547,6 @@ mod tests {
             DomainEntity::CapturedMarker(CapturedMarker {
                 id: "1".to_string(),
                 geometry: Point::new(0.0, 0.0),
-                object_id_name: "Kugelmarker".to_string(),
                 original_inner_properties: Map::new(),
             }),
             DomainEntity::Unknown(Feature {
