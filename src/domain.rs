@@ -1,5 +1,5 @@
 use geo::{Geometry as GeoRustGeometry, LineString, Point, Polygon};
-use geojson::{Feature, GeoJson, Geometry};
+use geojson::{Feature, FeatureCollection, GeoJson, Geometry};
 use serde_json::{Map, Value, from_str};
 use thiserror::Error;
 
@@ -68,6 +68,96 @@ impl DomainEntity {
     }
 }
 
+fn indentify_domain_entity(feature: Feature) -> DomainEntity {
+    let feature_id = match feature.id.clone() {
+        Some(id) => match id {
+            geojson::feature::Id::String(id) => id,
+            geojson::feature::Id::Number(id) => id.to_string(),
+        },
+        None => "No ID".to_string(),
+    };
+
+    let original_feature = feature.clone();
+
+    let outer_properties = match &feature.properties {
+        Some(properties) => properties,
+        None => {
+            eprintln!("Skipping feature {:?} with no properties", feature_id);
+            return DomainEntity::Unknown(original_feature);
+        }
+    };
+
+    let inner_properties: Map<String, Value> = match &outer_properties.get("properties") {
+        Some(Value::String(s)) => match from_str(s) {
+            Ok(properties) => properties,
+            Err(e) => {
+                eprintln!(
+                    "Inner properties string failed to parse for feature {}: {}",
+                    feature_id, e
+                );
+                return DomainEntity::Unknown(original_feature);
+            }
+        },
+        Some(Value::Object(properties)) => properties.clone(),
+        _ => {
+            eprintln!(
+                "Outer properties['properties'] is missing or not string/object for feature {}",
+                feature_id
+            );
+            return DomainEntity::Unknown(original_feature);
+        }
+    };
+    match inner_properties.get("objectId") {
+        Some(Value::String(object_id_value)) => match object_id_value.as_str() {
+            "Kugelmarker" => {
+                let point_geometry = match feature.geometry.clone() {
+                    Some(geometry) => match GeoRustGeometry::try_from(geometry) {
+                        Ok(GeoRustGeometry::Point(point)) => point,
+                        Ok(other_geometry) => {
+                            eprintln!(
+                                "Expected Point geometry for Marker type {}, found {:?}",
+                                object_id_value, other_geometry
+                            );
+                            return DomainEntity::Unknown(original_feature);
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "Failed to convert geometry for Marker type {}: {}",
+                                object_id_value, e
+                            );
+                            return DomainEntity::Unknown(original_feature);
+                        }
+                    },
+                    None => {
+                        eprintln!("Geometry is missing for Marker type {}", object_id_value);
+                        return DomainEntity::Unknown(original_feature);
+                    }
+                };
+                DomainEntity::Marker(CapturedMarker {
+                    id: feature_id,
+                    geometry: point_geometry,
+                    object_id_name: object_id_value.clone(),
+                    original_inner_properties: inner_properties.clone(),
+                })
+            }
+            _ => {
+                eprintln!(
+                    "Unrecognized objectId: {} for feature {}",
+                    object_id_value, feature_id
+                );
+                return DomainEntity::Unknown(original_feature);
+            }
+        },
+        _ => {
+            eprintln!(
+                "Missing or invalid 'objectId' in inner properties for feature {}",
+                feature_id
+            );
+            return DomainEntity::Unknown(original_feature);
+        }
+    }
+}
+
 #[allow(dead_code)]
 fn indentify_domain_entities(geojson: GeoJson) -> Result<Vec<DomainEntity>, Error> {
     let feature_collection = match geojson {
@@ -75,107 +165,12 @@ fn indentify_domain_entities(geojson: GeoJson) -> Result<Vec<DomainEntity>, Erro
         _ => return Err(Error::InvalidFeatureCollection),
     };
 
-    let mut domain_entities: Vec<DomainEntity> = Vec::new();
-
-    for feature in feature_collection.features {
-        let feature_id = match feature.id.clone() {
-            Some(id) => match id {
-                geojson::feature::Id::String(id) => id,
-                geojson::feature::Id::Number(id) => id.to_string(),
-            },
-            None => "No ID".to_string(),
-        };
-
-        let outer_properties = match &feature.properties {
-            Some(properties) => properties,
-            None => {
-                eprintln!("Skipping feature {:?} with no properties", feature_id);
-                domain_entities.push(DomainEntity::Unknown(feature));
-                continue;
-            }
-        };
-
-        let inner_properties: Map<String, Value> = match &outer_properties.get("properties") {
-            Some(Value::String(s)) => match from_str(s) {
-                Ok(properties) => properties,
-                Err(e) => {
-                    eprintln!(
-                        "Skipping feature {:?} because inner properties string failed to parse: {}",
-                        feature_id, e
-                    );
-                    domain_entities.push(DomainEntity::Unknown(feature));
-                    continue;
-                }
-            },
-            Some(Value::Object(properties)) => properties.clone(),
-            _ => {
-                eprintln!(
-                    "Skipping feature {:?} because outer properties is not an object or string",
-                    feature_id
-                );
-                domain_entities.push(DomainEntity::Unknown(feature));
-                continue;
-            }
-        };
-
-        let identified_domain_entity = match inner_properties.get("objectId") {
-            Some(Value::String(object_id_value)) => match object_id_value.as_str() {
-                "Kugelmarker" => {
-                    let point_geometry = if let Some(geometry) = &feature.geometry {
-                        match GeoRustGeometry::try_from(geometry) {
-                            Ok(GeoRustGeometry::Point(point)) => point,
-                            Ok(other_geometry) => {
-                                eprintln!(
-                                    "Expected Point geometry for Marker type {}, found {:?}",
-                                    object_id_value, other_geometry
-                                );
-                                domain_entities.push(DomainEntity::Unknown(feature));
-                                continue;
-                            }
-                            Err(e) => {
-                                eprintln!(
-                                    "Expected Point geometry for Marker type {}, failed to parse: {}",
-                                    object_id_value, e
-                                );
-                                domain_entities.push(DomainEntity::Unknown(feature));
-                                continue;
-                            }
-                        }
-                    } else {
-                        eprintln!(
-                            "Skipping feature {:?} because geometry is missing",
-                            feature_id
-                        );
-                        domain_entities.push(DomainEntity::Unknown(feature));
-                        continue;
-                    };
-                    DomainEntity::Marker(CapturedMarker {
-                        id: feature_id,
-                        geometry: point_geometry,
-                        object_id_name: object_id_value.clone(),
-                        original_inner_properties: inner_properties.clone(),
-                    })
-                }
-                _ => {
-                    eprintln!(
-                        "Skipping feature {:?} because objectId is not a string or missing",
-                        feature_id
-                    );
-                    domain_entities.push(DomainEntity::Unknown(feature));
-                    continue;
-                }
-            },
-            _ => {
-                eprintln!(
-                    "Skipping feature {:?} because outer properties['properties'] is not a string or missing",
-                    feature_id
-                );
-                domain_entities.push(DomainEntity::Unknown(feature));
-                continue;
-            }
-        };
-        domain_entities.push(identified_domain_entity);
-    }
+    // Process each feature using the helper function
+    let domain_entities: Vec<DomainEntity> = feature_collection
+        .features
+        .into_iter()
+        .map(indentify_domain_entity) // Apply helper to each feature
+        .collect(); // Collect results
 
     Ok(domain_entities)
 }
@@ -213,11 +208,17 @@ fn convert_domain_entities_to_geojson_features(domain_entities: Vec<DomainEntity
         .into_iter()
         .map(convert_domain_entity_to_geojson_feature)
         .collect();
-    GeoJson::FeatureCollection(features)
+    GeoJson::FeatureCollection(FeatureCollection {
+        features,
+        bbox: None,
+        foreign_members: None,
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    use geojson::{FeatureCollection, feature::Id};
+
     use super::*;
 
     #[test]
@@ -350,5 +351,64 @@ mod tests {
 
         let domain_entities = indentify_domain_entities(geojson).unwrap();
         assert_eq!(domain_entities.len(), 0);
+    }
+    #[test]
+    fn test_convert_domain_entity_to_geojson_feature() {
+        let domain_entity = DomainEntity::Marker(CapturedMarker {
+            id: "1".to_string(),
+            geometry: Point::new(0.0, 0.0),
+            object_id_name: "Kugelmarker".to_string(),
+            original_inner_properties: Map::new(),
+        });
+        let geojson_feature = convert_domain_entity_to_geojson_feature(domain_entity);
+        // println!("geojson_feature: {:#?}", geojson_feature);
+        assert_eq!(geojson_feature.id.unwrap(), Id::String("1".to_string()));
+        // assert_eq!(geojson_feature.geometry.unwrap().to_owned().geometry_type(), "Point");
+    }
+    #[test]
+    fn test_convert_domain_entity_to_geojson_feature_with_unknown() {
+        let domain_entity = DomainEntity::Unknown(Feature {
+            geometry: None,
+            properties: None,
+            bbox: None,
+            id: Some(Id::String("No ID".to_string())),
+            foreign_members: None,
+        });
+        let geojson_feature = convert_domain_entity_to_geojson_feature(domain_entity);
+        assert_eq!(geojson_feature.id.unwrap(), Id::String("No ID".to_string()));
+        assert_eq!(geojson_feature.geometry.is_none(), true);
+    }
+    #[test]
+    fn test_convert_domain_entities_to_geojson_features() {
+        let domain_entities = vec![
+            DomainEntity::Marker(CapturedMarker {
+                id: "1".to_string(),
+                geometry: Point::new(0.0, 0.0),
+                object_id_name: "Kugelmarker".to_string(),
+                original_inner_properties: Map::new(),
+            }),
+            DomainEntity::Unknown(Feature {
+                geometry: None,
+                properties: None,
+                bbox: None,
+                id: Some(Id::String("No ID".to_string())),
+                foreign_members: None,
+            }),
+        ];
+        let geojson_features = convert_domain_entities_to_geojson_features(domain_entities);
+        println!("geojson_features: {:#?}", geojson_features);
+    }
+    #[test]
+    fn test_convert_domain_entities_to_geojson_features_with_empty_vector() {
+        let domain_entities = vec![];
+        let geojson_features = convert_domain_entities_to_geojson_features(domain_entities);
+        assert_eq!(
+            geojson_features,
+            GeoJson::FeatureCollection(FeatureCollection {
+                features: vec![],
+                bbox: None,
+                foreign_members: None
+            })
+        );
     }
 }
