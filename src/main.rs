@@ -7,8 +7,8 @@ use geo_utility::generation::featurecollection::generate_synthetic_featurecollec
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // generate_synthetic_collection_data()?;
-    generate_synthetic_complex_collection_data()?;
+    generate_synthetic_collection_data()?;
+    // generate_synthetic_complex_collection_data()?;
     // calculate_bounding_box();
 
     Ok(())
@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[allow(dead_code)]
 fn generate_synthetic_data() -> Result<(), Box<dyn std::error::Error>> {
-    let num_features = 1_000; // Or 1_000_000
+    let num_features = 100; // Or 1_000_000
     let max_vertices = 50;
     let bend_freq = 0.1;
     let max_bend_angle = 45.0;
@@ -39,7 +39,7 @@ fn generate_synthetic_data() -> Result<(), Box<dyn std::error::Error>> {
 
 #[allow(dead_code)]
 fn generate_synthetic_collection_data() -> Result<(), Box<dyn std::error::Error>> {
-    let num_features = 10_000_000;
+    let num_features = 100;
     let x_range = (-1000.0, 1000.0);
     let y_range = (-1000.0, 1000.0);
 

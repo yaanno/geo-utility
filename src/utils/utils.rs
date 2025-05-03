@@ -1,4 +1,4 @@
-use geo::{BoundingRect, Contains, Coord, Intersects, Point, Rect};
+use geo::{Contains, Coord, Point, Rect};
 
 pub const GERMANY_BBOX: [f64; 4] = [
     5.866211,  // Min longitude
@@ -66,7 +66,7 @@ impl InBoundingBox for Vec<f64> {
             Coord { x: bbox[0], y: bbox[1] },
             Coord { x: bbox[2], y: bbox[3] },
         );
-        rect.intersects(&coords)
+        rect.contains(&coords)
     }
 }
 
@@ -127,15 +127,6 @@ impl BoundingBoxOps for Rect {
             },
         )
     }
-}
-
-
-#[allow(dead_code)]
-pub fn convert_polygons_to_bounding_boxes(polygons: Vec<geo::Polygon>) -> Vec<Rect> {
-    polygons
-        .into_iter()
-        .map(|poly| poly.bounding_rect().unwrap())
-        .collect()
 }
 
 #[allow(dead_code)]

@@ -12,20 +12,66 @@ pub enum Error {
     #[error("Missing geometry")]
     MissingGeometry,
     #[error("Invalid coordinates")]
-    InvalidCoordinates, // Not used currently
+    InvalidCoordinates,
     #[error("Invalid feature")]
-    InvalidFeature, // Not used currently
+    InvalidFeature,
     #[error("Invalid feature collection")]
     InvalidFeatureCollection,
     #[error("Invalid feature properties")]
-    InvalidFeatureProperties, // Not used currently
+    InvalidFeatureProperties,
     #[error("Invalid feature geometry")]
-    InvalidFeatureGeometry, // Not used currently
-    #[error("Invalid objectId: {0}")] // Include the bad string in the error message
+    InvalidFeatureGeometry,
+    #[error("Invalid objectId: {0}")]
     InvalidObjectId(String),
-    #[error("Error converting geometry: {0}")] // More specific error for geo::Error
+    #[error("Error converting geometry: {0}")]
     GeometryConversionError(#[from] Box<dyn StdError>),
 }
+
+// --- Macro for Into<Feature> ---
+macro_rules! impl_into_feature_for_point_entity {
+    ($struct_name:ident) => {
+        impl Into<Feature> for &$struct_name {
+            /// Helper macro to convert a DomainEntity variant to a GeoJSON feature.
+            ///
+            /// # Arguments
+            ///
+            /// * `self` - The DomainEntity variant to convert.
+            ///
+            /// # Returns
+            ///
+            /// * `Feature` - The converted GeoJSON feature.
+            fn into(self) -> Feature {
+                let geometry = Geometry::from(&self.geometry).clone();
+                let mut properties = self.original_inner_properties.clone();
+
+                // Example: Add objectId back to output properties if present in original inner
+                if let Some(Value::String(obj_id)) = self.original_inner_properties.get("objectId")
+                {
+                    properties.insert("objectId".to_string(), Value::String(obj_id.clone()));
+                }
+                // // Example: Add CapturedMarker's specific field if it exists
+                //  if let Some(marker) = self.as_captured_marker() { // Requires as_captured_marker helper on DomainEntity
+                //      properties.insert("object_id_name".to_string(), Value::String(marker.object_id_name.clone()));
+                //  }
+
+                Feature {
+                    geometry: Some(geometry),
+                    properties: Some(properties),
+                    bbox: None,
+                    id: Some(Id::String(self.id.clone())),
+                    foreign_members: None, // You might need to store and forward these
+                }
+            }
+        }
+    };
+}
+
+// --- Use the macro for each Point struct ---
+impl_into_feature_for_point_entity!(CapturedMarker);
+impl_into_feature_for_point_entity!(SupplyPoint);
+impl_into_feature_for_point_entity!(OperationSite);
+impl_into_feature_for_point_entity!(DrillingPoint);
+impl_into_feature_for_point_entity!(CableTunnel);
 
 // --- Example Domain Structs ---
 #[derive(Debug, Clone)]
@@ -63,72 +109,34 @@ pub struct CableTunnel {
     pub original_inner_properties: Map<String, Value>,
 }
 
-impl Into<Feature> for &CableTunnel {
-    fn into(self) -> Feature {
-        let geometry = Geometry::from(&self.geometry).clone();
-        let properties = self.original_inner_properties.clone();
-        Feature {
-            geometry: Some(geometry),
-            properties: Some(properties),
-            bbox: None,
-            id: Some(Id::String(self.id.clone())),
-            foreign_members: None,
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct Building {
+    pub id: String,
+    pub geometry: GeoRustGeometry, // Assuming Kabelschachte are Points (if they appear in your data)
+    pub original_inner_properties: Map<String, Value>,
 }
 
-impl Into<Feature> for &DrillingPoint {
+// This impl should NOT use the macro defined for Point entities
+impl Into<Feature> for &Building {
     fn into(self) -> Feature {
-        let geometry = Geometry::from(&self.geometry).clone();
-        let properties = self.original_inner_properties.clone();
-        Feature {
-            geometry: Some(geometry),
-            properties: Some(properties),
-            bbox: None,
-            id: Some(Id::String(self.id.clone())),
-            foreign_members: None,
-        }
-    }
-}
+        // Convert the geo::Geometry to geojson::Geometry
+        let geometry = Geometry::from(&self.geometry).clone(); // Convert GeoRustGeometry
 
-impl Into<Feature> for &OperationSite {
-    fn into(self) -> Feature {
-        let geometry = Geometry::from(&self.geometry).clone();
-        let properties = self.original_inner_properties.clone();
-        Feature {
-            geometry: Some(geometry),
-            properties: Some(properties),
-            bbox: None,
-            id: Some(Id::String(self.id.clone())),
-            foreign_members: None,
-        }
-    }
-}
+        // Clone the original inner properties
+        let mut properties = self.original_inner_properties.clone();
 
-impl Into<Feature> for &SupplyPoint {
-    fn into(self) -> Feature {
-        let geometry = Geometry::from(&self.geometry).clone();
-        let properties = self.original_inner_properties.clone();
-        Feature {
-            geometry: Some(geometry),
-            properties: Some(properties),
-            bbox: None,
-            id: Some(Id::String(self.id.clone())),
-            foreign_members: None,
+        // Add objectId back to output properties if present in original inner (optional)
+        if let Some(Value::String(obj_id)) = self.original_inner_properties.get("objectId") {
+             properties.insert("objectId".to_string(), Value::String(obj_id.clone()));
         }
-    }
-}
+        // Add Building-specific fields to output properties if needed
 
-impl Into<Feature> for &CapturedMarker {
-    fn into(self) -> Feature {
-        let geometry = Geometry::from(&self.geometry).clone();
-        let properties = self.original_inner_properties.clone();
         Feature {
             geometry: Some(geometry),
             properties: Some(properties),
-            bbox: None,
+            bbox: None, // Calculate this if needed
             id: Some(Id::String(self.id.clone())),
-            foreign_members: None,
+            foreign_members: None, // Forward foreign members if your structs held them
         }
     }
 }
@@ -141,10 +149,20 @@ pub enum DomainEntity {
     OperationSite(OperationSite),
     DrillingPoint(DrillingPoint),
     CableTunnel(CableTunnel),
+    Building(Building),
     Unknown(Feature),
 }
 
 impl DomainEntity {
+    /// Helper function to get the ID of the feature.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - The DomainEntity variant to get the ID from.
+    ///
+    /// # Returns
+    ///
+    /// * `Option<&String>` - The ID of the feature.
     pub fn id(&self) -> Option<&String> {
         match self {
             DomainEntity::CapturedMarker(marker) => Some(&marker.id),
@@ -152,6 +170,7 @@ impl DomainEntity {
             DomainEntity::OperationSite(site) => Some(&site.id),
             DomainEntity::DrillingPoint(point) => Some(&point.id),
             DomainEntity::CableTunnel(tunnel) => Some(&tunnel.id),
+            DomainEntity::Building(building) => Some(&building.id),
             DomainEntity::Unknown(feature) => feature.id.as_ref().and_then(|id| match id {
                 Id::String(s) => Some(s),
                 Id::Number(_) => None, // Or convert number ID to string reference if possible
@@ -161,6 +180,15 @@ impl DomainEntity {
 }
 
 impl Into<Feature> for &DomainEntity {
+    /// Helper function to convert a DomainEntity variant to a GeoJSON feature.
+    ///
+    /// # Arguments
+    ///
+    /// * `domain_entity` - The DomainEntity variant to convert.
+    ///
+    /// # Returns
+    ///
+    /// * `Feature` - The converted GeoJSON feature.
     fn into(self) -> Feature {
         match self {
             DomainEntity::CapturedMarker(marker) => marker.into(),
@@ -168,12 +196,22 @@ impl Into<Feature> for &DomainEntity {
             DomainEntity::OperationSite(site) => site.into(),
             DomainEntity::DrillingPoint(point) => point.into(),
             DomainEntity::CableTunnel(tunnel) => tunnel.into(),
+            DomainEntity::Building(building) => building.into(),
             DomainEntity::Unknown(feature) => feature.clone(),
         }
     }
 }
 
 impl From<DomainEntity> for GeoRustGeometry {
+    /// Helper function to convert a DomainEntity variant to a GeoRustGeometry variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The DomainEntity variant to convert.
+    ///
+    /// # Returns
+    ///
+    /// * `GeoRustGeometry` - The converted GeoRustGeometry variant.
     fn from(value: DomainEntity) -> Self {
         match value {
             DomainEntity::CapturedMarker(marker) => GeoRustGeometry::Point(marker.geometry),
@@ -181,6 +219,7 @@ impl From<DomainEntity> for GeoRustGeometry {
             DomainEntity::OperationSite(site) => GeoRustGeometry::Point(site.geometry),
             DomainEntity::DrillingPoint(point) => GeoRustGeometry::Point(point.geometry),
             DomainEntity::CableTunnel(tunnel) => GeoRustGeometry::Point(tunnel.geometry),
+            DomainEntity::Building(building) => building.geometry,
             DomainEntity::Unknown(_) => GeoRustGeometry::Point(Point::new(0.0, 0.0)),
         }
     }
@@ -205,6 +244,9 @@ impl DomainEntity {
     pub fn is_unknown(&self) -> bool {
         matches!(self, DomainEntity::Unknown(_))
     }
+    pub fn is_building(&self) -> bool {
+        matches!(self, DomainEntity::Building(_))
+    }
 }
 
 pub enum ObjectId {
@@ -213,10 +255,20 @@ pub enum ObjectId {
     Betriebsstelle,
     Bohrpunkt,
     Kabelschacht,
+    Building,
 }
 
 impl TryFrom<String> for ObjectId {
     type Error = Error;
+    /// Helper function to convert a string to an ObjectId variant.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The string to convert.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<ObjectId, Error>` - The converted ObjectId variant.
     fn try_from(value: String) -> Result<Self, Self::Error> {
         match value.as_str() {
             "Kugelmarker" => Ok(ObjectId::Kugelmarker),
@@ -224,25 +276,36 @@ impl TryFrom<String> for ObjectId {
             "Betriebsstelle" => Ok(ObjectId::Betriebsstelle),
             "Bohrpunkt" => Ok(ObjectId::Bohrpunkt),
             "Kabelschacht" => Ok(ObjectId::Kabelschacht),
+            "Gebaeude" => Ok(ObjectId::Building),
             _ => Err(Error::InvalidObjectId(value)),
         }
     }
 }
 
-// Helper function to create the specific DomainEntity variant
-// for a Point type, given the common data and the identified ObjectId.
+/// Helper function to create the specific DomainEntity variant
+/// for a Point type, given the common data and the identified ObjectId.
+///
+/// # Arguments
+///
+/// * `id` - The ID of the feature.
+/// * `geometry` - The geometry of the feature.
+/// * `original_inner_properties` - The original inner properties of the feature.
+/// * `object_id` - The identified ObjectId.
+///
+/// # Returns
+///
+/// * `DomainEntity` - The created DomainEntity variant.
 fn create_point_domain_entity(
     id: String,
     geometry: Point,
     original_inner_properties: Map<String, Value>,
-    object_id: ObjectId, // Takes the parsed enum variant
-                         // Add other common fields needed for specific structs here if they weren't in properties
+    object_id: ObjectId,
 ) -> DomainEntity {
     match object_id {
         ObjectId::Kugelmarker => DomainEntity::CapturedMarker(CapturedMarker {
-            id,                        // Move id
-            geometry,                  // Move geometry
-            original_inner_properties, // Move properties
+            id,
+            geometry,
+            original_inner_properties,
         }),
         ObjectId::Versorgungspunkt => DomainEntity::SupplyPoint(SupplyPoint {
             id,
@@ -264,9 +327,20 @@ fn create_point_domain_entity(
             geometry,
             original_inner_properties,
         }),
+        _ => unimplemented!(),
     }
 }
 
+/// Helper function to identify the specific DomainEntity variant
+/// for a Point type, given the feature.
+///
+/// # Arguments
+///
+/// * `feature` - The feature to identify.
+///
+/// # Returns
+///
+/// * `DomainEntity` - The identified DomainEntity variant.
 fn indentify_domain_entity(feature: Feature) -> DomainEntity {
     let feature_id = match feature.id.clone() {
         Some(id) => match id {
@@ -281,7 +355,7 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
     let outer_properties = match &feature.properties {
         Some(properties) => properties,
         None => {
-            eprintln!("Skipping feature {:?} with no properties", feature_id);
+            // eprintln!("Skipping feature {:?} with no properties", feature_id);
             return DomainEntity::Unknown(original_feature);
         }
     };
@@ -299,10 +373,10 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
         },
         Some(Value::Object(properties)) => properties.clone(),
         _ => {
-            eprintln!(
-                "Outer properties['properties'] is missing or not string/object for feature {}",
-                feature_id
-            );
+            // eprintln!(
+            //     "Outer properties['properties'] is missing or not string/object for feature {}",
+            //     feature_id
+            // );
             return DomainEntity::Unknown(original_feature);
         }
     };
@@ -310,23 +384,94 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
         Some(Value::String(object_id_value)) => {
             match ObjectId::try_from(object_id_value.clone()) {
                 Ok(object_id_enum) => {
-                    // --- Common logic for ALL known Point types ---
-                    let point_geometry = match get_point_geometry(
-                        &feature, // Pass by reference
-                        &original_feature,
-                        &object_id_value, // Still need the string for logging context in helper
-                    ) {
-                        Ok(value) => value,
-                        Err(unknown_entity) => return unknown_entity, // Return Unknown if geometry extraction fails
-                    };
+                    match object_id_enum {
+                        ObjectId::Kugelmarker
+                        | ObjectId::Versorgungspunkt
+                        | ObjectId::Betriebsstelle
+                        | ObjectId::Bohrpunkt
+                        | ObjectId::Kabelschacht => {
+                            // --- Common logic for ALL known Point types ---
+                            let point_geometry = match get_point_geometry(
+                                &feature, // Pass by reference
+                                &original_feature,
+                                &object_id_value, // Still need the string for logging context in helper
+                            ) {
+                                Ok(value) => value,
+                                Err(unknown_entity) => return unknown_entity, // Return Unknown if geometry extraction fails
+                            };
 
-                    // --- Use the factory function to create the specific entity ---
-                    create_point_domain_entity(
-                        feature_id,       // Move id
-                        point_geometry,   // Move geometry
-                        inner_properties, // Move properties
-                        object_id_enum,   // Pass the enum variant
-                    )
+                            // --- Use the factory function to create the specific entity ---
+                            create_point_domain_entity(
+                                feature_id,       // Move id
+                                point_geometry,   // Move geometry
+                                inner_properties, // Move properties
+                                object_id_enum,   // Pass the enum variant
+                            )
+                        }
+                        ObjectId::Building => {
+                            let building_geometry_option = feature.geometry.clone(); // Clone geometry
+
+                            let building_geometry = match &building_geometry_option {
+                                Some(geom) => {
+                                    // Try converting the geojson::Geometry into the general geo::Geometry enum
+                                    match GeoRustGeometry::try_from(geom) {
+                                        Ok(geo_geom) => geo_geom, // Successfully converted to GeoRustGeometry
+                                        Err(e) => {
+                                             let geojson_type = geom.value.type_name();
+                                             let conversion_error = Error::GeometryConversionError(Box::new(e));
+                                             eprintln!(
+                                                "Failed to convert geojson::{} to geo::Geometry for Building (feature {}): {}",
+                                                geojson_type, feature_id, conversion_error
+                                             );
+                                            return DomainEntity::Unknown(original_feature); // Conversion error
+                                        }
+                                    }
+                                }
+                                None => {
+                                    eprintln!("Geometry is missing for Building (feature {})", feature_id);
+                                    return DomainEntity::Unknown(original_feature); // Missing geometry
+                                }
+                            };
+                            match building_geometry {
+                                GeoRustGeometry::Polygon(polygon) => {
+                                    DomainEntity::Building(Building {
+                                        id: feature_id,
+                                        geometry: GeoRustGeometry::Polygon(polygon),
+                                        original_inner_properties: inner_properties,
+                                    })
+                                }
+                                GeoRustGeometry::MultiPolygon(multi_polygon) => {
+                                    DomainEntity::Building(Building {
+                                        id: feature_id,
+                                        geometry: GeoRustGeometry::MultiPolygon(multi_polygon),
+                                        original_inner_properties: inner_properties,
+                                    })
+                                }
+                                GeoRustGeometry::LineString(ls) => {
+                                    // Allowed type: Closed LineString
+                                    if ls.is_closed() {
+                                       DomainEntity::Building(Building {
+                                           id: feature_id,
+                                           geometry: GeoRustGeometry::LineString(ls), // Store the LineString
+                                           original_inner_properties: inner_properties,
+                                           // Add other specific fields
+                                       })
+                                    } else {
+                                       eprintln!("LineString geometry for Building (feature {}) is not closed", feature_id);
+                                       DomainEntity::Unknown(original_feature) // LineString but not closed
+                                    }
+                               }
+                               // Disallowed geometry type for Building
+                               other_geometry => {
+                                    eprintln!(
+                                        "Disallowed geometry type for Building (feature {}): {:?}",
+                                        feature_id, other_geometry // Use geom_type() for better logging
+                                    );
+                                    DomainEntity::Unknown(original_feature)
+                               }
+                            }
+                        }
+                    }
                 }
                 Err(Error::InvalidObjectId(unrecognized_id_string)) => {
                     // This branch handles valid strings that are NOT known ObjectIds
@@ -347,7 +492,7 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
         }
         // --- Fallback for missing or invalid objectId type ---
         _ => {
-            eprintln!(
+             eprintln!(
                 "Missing or invalid 'objectId' in inner properties for feature {}",
                 feature_id
             );
@@ -359,6 +504,15 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
     identified_domain_entity
 }
 
+/// Helper function to extract the geometry from a feature.
+///
+/// # Arguments
+///
+/// * `feature` - The feature to extract the geometry from.
+///
+/// # Returns
+///
+/// * `Result<Point, DomainEntity>` - The extracted geometry.
 fn get_point_geometry(
     feature: &Feature,          // Take by reference
     original_feature: &Feature, // Take by reference
@@ -379,7 +533,7 @@ fn get_point_geometry(
     let geometry = match &geometry_option {
         Some(geom) => geom,
         None => {
-            eprintln!(
+            eprintln!(  
                 "Geometry is missing for objectId '{}' (feature {})",
                 object_id_value, feature_id
             );
@@ -405,8 +559,17 @@ fn get_point_geometry(
     }
 }
 
-#[allow(dead_code)]
-fn indentify_domain_entities(geojson: GeoJson) -> Result<Vec<DomainEntity>, Error> {
+/// Helper function to identify the specific DomainEntity variants
+/// for a Point type, given the feature collection.
+///
+/// # Arguments
+///
+/// * `geojson` - The feature collection to identify the DomainEntity variants from.
+///
+/// # Returns
+///
+/// * `Result<Vec<DomainEntity>, Error>` - The identified DomainEntity variant.
+pub fn indentify_domain_entities(geojson: GeoJson) -> Result<Vec<DomainEntity>, Error> {
     let feature_collection = match geojson {
         GeoJson::FeatureCollection(feature_collection) => feature_collection,
         _ => return Err(Error::InvalidFeatureCollection),
@@ -422,6 +585,15 @@ fn indentify_domain_entities(geojson: GeoJson) -> Result<Vec<DomainEntity>, Erro
     Ok(domain_entities)
 }
 
+/// Helper function to convert a DomainEntity variant to a GeoJSON feature.
+///
+/// # Arguments
+///
+/// * `domain_entity` - The DomainEntity variant to convert.
+///
+/// # Returns
+///
+/// * `Feature` - The converted GeoJSON feature.
 #[allow(dead_code)]
 fn convert_domain_entity_to_geojson_feature(domain_entity: DomainEntity) -> Feature {
     match &domain_entity {
@@ -431,6 +603,7 @@ fn convert_domain_entity_to_geojson_feature(domain_entity: DomainEntity) -> Feat
          entity_ref @ DomainEntity::OperationSite(_) |
          entity_ref @ DomainEntity::DrillingPoint(_) |
          entity_ref @ DomainEntity::CableTunnel(_) |
+         entity_ref @ DomainEntity::Building(_) |
          entity_ref @ DomainEntity::Unknown(_) // Also include Unknown here
          => {
              entity_ref.into() // Calls the Into<Feature> for &DomainEntity impl
@@ -438,6 +611,15 @@ fn convert_domain_entity_to_geojson_feature(domain_entity: DomainEntity) -> Feat
     }
 }
 
+/// Helper function to convert a vector of DomainEntity variants to a GeoJSON feature collection.
+///
+/// # Arguments
+///
+/// * `domain_entities` - The vector of DomainEntity variants to convert.
+///
+/// # Returns
+///
+/// * `GeoJson` - The converted GeoJSON feature collection.
 #[allow(dead_code)]
 fn convert_domain_entities_to_geojson_features(domain_entities: Vec<DomainEntity>) -> GeoJson {
     let features = domain_entities
@@ -795,5 +977,147 @@ mod tests {
         let domain_entities = indentify_domain_entities(geojson).unwrap();
         assert_eq!(domain_entities.len(), 1);
         assert!(domain_entities[0].is_cable_tunnel());
+    }
+    #[test]
+    fn test_indentify_domain_entity_with_unknown() {
+        let geojson = serde_json::from_str(
+            r#"
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "id": "1",
+                        "type": "Feature",
+                        "properties": {
+                            "properties": {
+                                "objectId": "Unknown"
+                            }
+                        },
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [0.0, 0.0]
+                        }
+                    }
+                ]
+            }
+            "#,
+        )
+        .unwrap();
+
+        let domain_entities = indentify_domain_entities(geojson).unwrap();
+        assert_eq!(domain_entities.len(), 1);
+        assert!(domain_entities[0].is_unknown());
+    }
+
+    #[test]
+    fn test_identify_domain_entity_with_line_string_geomtery() {
+        let geojson = serde_json::from_str(
+            r#"
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "id": "1",
+                        "type": "Feature",
+                        "properties": {
+                            "properties": {
+                                "objectId": "Kabelschacht"
+                            }
+                        },
+                        "geometry": {
+                            "type": "LineString",
+                            "coordinates": [
+                                [0.0, 0.0],
+                                [1.0, 1.0]
+                            ]
+                        }
+                    }
+                ]
+            }
+            "#,
+        )
+        .unwrap();
+
+        let domain_entities = indentify_domain_entities(geojson).unwrap();
+        assert_eq!(domain_entities.len(), 1);
+        assert!(domain_entities[0].is_unknown());
+    }
+    #[test]
+    fn test_indentify_domain_entity_with_polygon_geomtery() {
+        let geojson = serde_json::from_str(
+            r#"
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "id": "1",
+                        "type": "Feature",
+                        "properties": {
+                            "properties": {
+                                "objectId": "Gebaeude"
+                            }
+                        },
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [0.0, 0.0],
+                                    [1.0, 1.0],
+                                    [1.0, 0.0],
+                                    [0.0, 1.0],
+                                    [0.0, 0.0]
+                                ]
+                            ]
+                        }
+                    }
+                ]
+            }
+            "#,
+        )
+        .unwrap();
+
+        let domain_entities = indentify_domain_entities(geojson).unwrap();
+        assert_eq!(domain_entities.len(), 1);
+        assert!(domain_entities[0].is_building());
+    }
+    #[test]
+    fn test_identify_domain_entity_with_multi_polygon_geomtery() {
+        let geojson = serde_json::from_str(
+            r#"
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "id": "1",
+                        "type": "Feature",
+                        "properties": {
+                            "properties": {
+                                "objectId": "Gebaeude"
+                            }
+                        },
+                        "geometry": {
+                            "type": "MultiPolygon",
+                            "coordinates": [
+                                [
+                                    [
+                                        [0.0, 0.0],
+                                        [1.0, 1.0],
+                                        [1.0, 0.0],
+                                        [0.0, 1.0],
+                                        [0.0, 0.0]
+                                    ]
+                                ]
+                            ]
+                        }
+                    }
+                ]
+            }
+            "#,
+        )
+        .unwrap();
+
+        let domain_entities = indentify_domain_entities(geojson).unwrap();
+        assert_eq!(domain_entities.len(), 1);
+        assert!(domain_entities[0].is_building());
     }
 }

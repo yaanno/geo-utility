@@ -1,6 +1,7 @@
 use geo::{Coord, LineString};
 use geojson::{Feature, FeatureCollection, Geometry, Value};
-use rand::Rng; // Import the rand crate for random number generation
+use rand::Rng;
+use serde_json::Map; // Import the rand crate for random number generation
 
 /// Generates a synthetic GeoJSON FeatureCollection for benchmarking.
 ///
@@ -93,11 +94,43 @@ pub fn generate_synthetic_featurecollection(
             _ => None, // Should not happen with gen_range(0..4)
         };
 
+        let properties = match geom_type {
+            0 => {
+                let mut props = Map::new();
+                let mut inner_props = Map::new();   
+                inner_props.insert("objectId".to_string(), serde_json::Value::String("Kugelmarker".to_string()));
+                props.insert("properties".to_string(), serde_json::Value::Object(inner_props));
+                Some(props)
+            }
+            1 => {
+                let mut props = Map::new();
+                let mut inner_props = Map::new();   
+                inner_props.insert("objectId".to_string(), serde_json::Value::String("Linie".to_string()));
+                props.insert("properties".to_string(), serde_json::Value::Object(inner_props));
+                Some(props)
+            },
+            2 => {
+                let mut props = Map::new();
+                let mut inner_props = Map::new();   
+                inner_props.insert("objectId".to_string(), serde_json::Value::String("Gebaeude".to_string()));
+                props.insert("properties".to_string(), serde_json::Value::Object(inner_props));
+                Some(props)
+            },
+            3 => {
+                let mut props = Map::new();
+                let mut inner_props = Map::new();   
+                inner_props.insert("objectId".to_string(), serde_json::Value::String("Gebaeude".to_string()));
+                props.insert("properties".to_string(), serde_json::Value::Object(inner_props));
+                Some(props)
+            },
+            _ => None,
+        };
+
         let feature = Feature {
             bbox: None, // Can generate random bboxes if needed, but not essential for scaling benchmark
             geometry,
             id: Some(geojson::feature::Id::Number((i as u64).into())), // Simple ID
-            properties: None,      // Can add random properties if needed
+            properties,
             foreign_members: None, // Can add random foreign members if needed
         };
         features.push(feature);

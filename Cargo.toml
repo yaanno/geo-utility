@@ -39,5 +39,10 @@ name = "collect_bounding_bench"
 path = "benches/collect_bounding_bench.rs"
 harness = false
 
+[[bench]]
+name = "domain_bench"
+path = "benches/domain_bench.rs"
+harness = false
+
 [profile.bench]
 debug = true
