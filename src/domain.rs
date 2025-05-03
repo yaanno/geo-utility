@@ -1,6 +1,7 @@
 use geo::{Geometry as GeoRustGeometry, Point};
-use geojson::{Feature, FeatureCollection, GeoJson, Geometry};
+use geojson::{Feature, FeatureCollection, GeoJson, Geometry, feature::Id};
 use serde_json::{Map, Value, from_str};
+use std::error::Error as StdError;
 use thiserror::Error;
 
 // Define error type
@@ -11,17 +12,19 @@ pub enum Error {
     #[error("Missing geometry")]
     MissingGeometry,
     #[error("Invalid coordinates")]
-    InvalidCoordinates,
+    InvalidCoordinates, // Not used currently
     #[error("Invalid feature")]
-    InvalidFeature,
+    InvalidFeature, // Not used currently
     #[error("Invalid feature collection")]
     InvalidFeatureCollection,
     #[error("Invalid feature properties")]
-    InvalidFeatureProperties,
+    InvalidFeatureProperties, // Not used currently
     #[error("Invalid feature geometry")]
-    InvalidFeatureGeometry,
-    #[error("Invalid objectId")]
+    InvalidFeatureGeometry, // Not used currently
+    #[error("Invalid objectId: {0}")] // Include the bad string in the error message
     InvalidObjectId(String),
+    #[error("Error converting geometry: {0}")] // More specific error for geo::Error
+    GeometryConversionError(#[from] Box<dyn StdError>),
 }
 
 // --- Example Domain Structs ---
@@ -60,6 +63,75 @@ pub struct CableTunnel {
     pub original_inner_properties: Map<String, Value>,
 }
 
+impl Into<Feature> for &CableTunnel {
+    fn into(self) -> Feature {
+        let geometry = Geometry::from(&self.geometry).clone();
+        let properties = self.original_inner_properties.clone();
+        Feature {
+            geometry: Some(geometry),
+            properties: Some(properties),
+            bbox: None,
+            id: Some(Id::String(self.id.clone())),
+            foreign_members: None,
+        }
+    }
+}
+
+impl Into<Feature> for &DrillingPoint {
+    fn into(self) -> Feature {
+        let geometry = Geometry::from(&self.geometry).clone();
+        let properties = self.original_inner_properties.clone();
+        Feature {
+            geometry: Some(geometry),
+            properties: Some(properties),
+            bbox: None,
+            id: Some(Id::String(self.id.clone())),
+            foreign_members: None,
+        }
+    }
+}
+
+impl Into<Feature> for &OperationSite {
+    fn into(self) -> Feature {
+        let geometry = Geometry::from(&self.geometry).clone();
+        let properties = self.original_inner_properties.clone();
+        Feature {
+            geometry: Some(geometry),
+            properties: Some(properties),
+            bbox: None,
+            id: Some(Id::String(self.id.clone())),
+            foreign_members: None,
+        }
+    }
+}
+
+impl Into<Feature> for &SupplyPoint {
+    fn into(self) -> Feature {
+        let geometry = Geometry::from(&self.geometry).clone();
+        let properties = self.original_inner_properties.clone();
+        Feature {
+            geometry: Some(geometry),
+            properties: Some(properties),
+            bbox: None,
+            id: Some(Id::String(self.id.clone())),
+            foreign_members: None,
+        }
+    }
+}
+
+impl Into<Feature> for &CapturedMarker {
+    fn into(self) -> Feature {
+        let geometry = Geometry::from(&self.geometry).clone();
+        let properties = self.original_inner_properties.clone();
+        Feature {
+            geometry: Some(geometry),
+            properties: Some(properties),
+            bbox: None,
+            id: Some(Id::String(self.id.clone())),
+            foreign_members: None,
+        }
+    }
+}
 
 // --- Domain Entity Enum ---
 #[derive(Debug, Clone)]
@@ -73,34 +145,30 @@ pub enum DomainEntity {
 }
 
 impl DomainEntity {
-    pub fn id(&self) -> &String {
+    pub fn id(&self) -> Option<&String> {
         match self {
-            DomainEntity::CapturedMarker(marker) => &marker.id,
-            DomainEntity::SupplyPoint(point) => &point.id,
-            DomainEntity::OperationSite(site) => &site.id,
-            DomainEntity::DrillingPoint(point) => &point.id,
-            DomainEntity::CableTunnel(tunnel) => &tunnel.id,
-            _ => unimplemented!(),
+            DomainEntity::CapturedMarker(marker) => Some(&marker.id),
+            DomainEntity::SupplyPoint(point) => Some(&point.id),
+            DomainEntity::OperationSite(site) => Some(&site.id),
+            DomainEntity::DrillingPoint(point) => Some(&point.id),
+            DomainEntity::CableTunnel(tunnel) => Some(&tunnel.id),
+            DomainEntity::Unknown(feature) => feature.id.as_ref().and_then(|id| match id {
+                Id::String(s) => Some(s),
+                Id::Number(_) => None, // Or convert number ID to string reference if possible
+            }), // Handle geojson::feature::Id
         }
     }
-    pub fn geometry(&self) -> GeoRustGeometry {
+}
+
+impl Into<Feature> for &DomainEntity {
+    fn into(self) -> Feature {
         match self {
-            DomainEntity::CapturedMarker(marker) => GeoRustGeometry::Point(marker.geometry),
-            DomainEntity::SupplyPoint(point) => GeoRustGeometry::Point(point.geometry),
-            DomainEntity::OperationSite(site) => GeoRustGeometry::Point(site.geometry),
-            DomainEntity::DrillingPoint(point) => GeoRustGeometry::Point(point.geometry),
-            DomainEntity::CableTunnel(tunnel) => GeoRustGeometry::Point(tunnel.geometry),
-            _ => unimplemented!(),
-        }
-    }
-    pub fn original_inner_properties(&self) -> &Map<String, Value> {
-        match self {
-            DomainEntity::CapturedMarker(marker) => &marker.original_inner_properties,
-            DomainEntity::SupplyPoint(point) => &point.original_inner_properties,
-            DomainEntity::OperationSite(site) => &site.original_inner_properties,
-            DomainEntity::DrillingPoint(point) => &point.original_inner_properties,
-            DomainEntity::CableTunnel(tunnel) => &tunnel.original_inner_properties,
-            _ => unimplemented!(),
+            DomainEntity::CapturedMarker(marker) => marker.into(),
+            DomainEntity::SupplyPoint(point) => point.into(),
+            DomainEntity::OperationSite(site) => site.into(),
+            DomainEntity::DrillingPoint(point) => point.into(),
+            DomainEntity::CableTunnel(tunnel) => tunnel.into(),
+            DomainEntity::Unknown(feature) => feature.clone(),
         }
     }
 }
@@ -113,7 +181,7 @@ impl From<DomainEntity> for GeoRustGeometry {
             DomainEntity::OperationSite(site) => GeoRustGeometry::Point(site.geometry),
             DomainEntity::DrillingPoint(point) => GeoRustGeometry::Point(point.geometry),
             DomainEntity::CableTunnel(tunnel) => GeoRustGeometry::Point(tunnel.geometry),
-            _ => unimplemented!(),
+            DomainEntity::Unknown(_) => GeoRustGeometry::Point(Point::new(0.0, 0.0)),
         }
     }
 }
@@ -161,6 +229,44 @@ impl TryFrom<String> for ObjectId {
     }
 }
 
+// Helper function to create the specific DomainEntity variant
+// for a Point type, given the common data and the identified ObjectId.
+fn create_point_domain_entity(
+    id: String,
+    geometry: Point,
+    original_inner_properties: Map<String, Value>,
+    object_id: ObjectId, // Takes the parsed enum variant
+                         // Add other common fields needed for specific structs here if they weren't in properties
+) -> DomainEntity {
+    match object_id {
+        ObjectId::Kugelmarker => DomainEntity::CapturedMarker(CapturedMarker {
+            id,                        // Move id
+            geometry,                  // Move geometry
+            original_inner_properties, // Move properties
+        }),
+        ObjectId::Versorgungspunkt => DomainEntity::SupplyPoint(SupplyPoint {
+            id,
+            geometry,
+            original_inner_properties,
+        }),
+        ObjectId::Betriebsstelle => DomainEntity::OperationSite(OperationSite {
+            id,
+            geometry,
+            original_inner_properties,
+        }),
+        ObjectId::Bohrpunkt => DomainEntity::DrillingPoint(DrillingPoint {
+            id,
+            geometry,
+            original_inner_properties,
+        }),
+        ObjectId::Kabelschacht => DomainEntity::CableTunnel(CableTunnel {
+            id,
+            geometry,
+            original_inner_properties,
+        }),
+    }
+}
+
 fn indentify_domain_entity(feature: Feature) -> DomainEntity {
     let feature_id = match feature.id.clone() {
         Some(id) => match id {
@@ -202,61 +308,38 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
     };
     let identified_domain_entity = match inner_properties.get("objectId") {
         Some(Value::String(object_id_value)) => {
-            match object_id_value.as_str() {
-                "Kugelmarker" | "Versorgungspunkt" | "Betriebsstelle" | "Bohrpunkt"
-                | "Kabelschacht" => {
-                    // --- Common logic for ALL Point types ---
+            match ObjectId::try_from(object_id_value.clone()) {
+                Ok(object_id_enum) => {
+                    // --- Common logic for ALL known Point types ---
                     let point_geometry = match get_point_geometry(
-                        &feature, // Pass by reference now!
+                        &feature, // Pass by reference
                         &original_feature,
-                        object_id_value,
+                        &object_id_value, // Still need the string for logging context in helper
                     ) {
                         Ok(value) => value,
-                        Err(value) => return value, // Return Unknown if geometry extraction fails
+                        Err(unknown_entity) => return unknown_entity, // Return Unknown if geometry extraction fails
                     };
 
-                    // --- Specific struct creation based on objectId value ---
-                    match ObjectId::try_from(object_id_value.clone()) {
-                        Ok(ObjectId::Kugelmarker) => DomainEntity::CapturedMarker(CapturedMarker {
-                            id: feature_id,
-                            geometry: point_geometry,
-                            original_inner_properties: inner_properties, /* other fields */
-                        }),
-                        Ok(ObjectId::Versorgungspunkt) => DomainEntity::SupplyPoint(SupplyPoint {
-                            id: feature_id,
-                            geometry: point_geometry,
-                            original_inner_properties: inner_properties, /* other fields */
-                        }),
-                        Ok(ObjectId::Betriebsstelle) => {
-                            DomainEntity::OperationSite(OperationSite {
-                                id: feature_id,
-                                geometry: point_geometry,
-                                original_inner_properties: inner_properties, /* other fields */
-                            })
-                        }
-                        Ok(ObjectId::Bohrpunkt) => DomainEntity::DrillingPoint(DrillingPoint {
-                            id: feature_id,
-                            geometry: point_geometry,
-                            original_inner_properties: inner_properties, /* other fields */
-                        }),
-                        Ok(ObjectId::Kabelschacht) => DomainEntity::CableTunnel(CableTunnel {
-                            id: feature_id,
-                            geometry: point_geometry,
-                            original_inner_properties: inner_properties, /* other fields */
-                        }),
-                        _ => {
-                            eprintln!(
-                                "Internal logic error: Unhandled point objectId: {}",
-                                object_id_value
-                            );
-                            DomainEntity::Unknown(original_feature)
-                        }
-                    }
+                    // --- Use the factory function to create the specific entity ---
+                    create_point_domain_entity(
+                        feature_id,       // Move id
+                        point_geometry,   // Move geometry
+                        inner_properties, // Move properties
+                        object_id_enum,   // Pass the enum variant
+                    )
                 }
-                unrecognized_id => {
+                Err(Error::InvalidObjectId(unrecognized_id_string)) => {
+                    // This branch handles valid strings that are NOT known ObjectIds
                     eprintln!(
                         "Unrecognized objectId string: {} for feature {}",
-                        unrecognized_id, feature_id
+                        unrecognized_id_string, feature_id
+                    );
+                    DomainEntity::Unknown(original_feature)
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Failed to convert objectId for feature {}: {}",
+                        feature_id, e
                     );
                     DomainEntity::Unknown(original_feature)
                 }
@@ -277,35 +360,49 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
 }
 
 fn get_point_geometry(
-    feature: &Feature,
-    original_feature: &Feature,
-    object_id_value: &String,
+    feature: &Feature,          // Take by reference
+    original_feature: &Feature, // Take by reference
+    object_id_value: &str,      // Use &str, no need for &String
 ) -> Result<Point, DomainEntity> {
-    let cloned_feature = original_feature.clone();
-    let point_geometry = match feature.geometry.clone() {
-        Some(geometry) => match GeoRustGeometry::try_from(geometry) {
-            Ok(GeoRustGeometry::Point(point)) => point,
-            Ok(other_geometry) => {
-                eprintln!(
-                    "Expected Point geometry for objectId '{}', found {:?}",
-                    object_id_value, other_geometry
-                );
-                return Err(DomainEntity::Unknown(cloned_feature));
-            }
-            Err(e) => {
-                eprintln!(
-                    "Failed to convert geometry for objectId '{}': {}",
-                    object_id_value, e
-                );
-                return Err(DomainEntity::Unknown(cloned_feature));
-            }
+    let cloned_feature = original_feature.clone(); // Clone only when needed for Unknown
+
+    let geometry_option = feature.geometry.clone(); // Clone geometry to consume
+
+    let feature_id = match feature.id.clone() {
+        Some(id) => match id {
+            geojson::feature::Id::String(id) => id,
+            geojson::feature::Id::Number(id) => id.to_string(),
         },
+        None => "No ID".to_string(),
+    };
+
+    let geometry = match &geometry_option {
+        Some(geom) => geom,
         None => {
-            eprintln!("Geometry is missing for objectId '{}'", object_id_value);
+            eprintln!(
+                "Geometry is missing for objectId '{}' (feature {})",
+                object_id_value, feature_id
+            );
             return Err(DomainEntity::Unknown(cloned_feature));
         }
     };
-    Ok(point_geometry)
+
+    match geo::Point::try_from(geometry) {
+        Ok(point) => Ok(point),
+        Err(e) => {
+            let geojson_type = geometry.value.type_name();
+            // Use the new specific error variant
+            let conversion_error = Error::GeometryConversionError(Box::new(e));
+            eprintln!(
+                "Failed to convert geojson::{} to geo::Point for objectId '{}' (feature {}): {}",
+                geojson_type,
+                object_id_value,
+                feature_id,
+                conversion_error // Use conversion_error here
+            );
+            Err(DomainEntity::Unknown(cloned_feature))
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -325,43 +422,19 @@ fn indentify_domain_entities(geojson: GeoJson) -> Result<Vec<DomainEntity>, Erro
     Ok(domain_entities)
 }
 
-fn convert_point_entity_to_geojson_feature(point_entity: &DomainEntity) -> Feature {
-    let geo = point_entity.geometry();
-    let geometry = Geometry::from(&geo);
-    let mut properties = Map::new();
-    let id = point_entity.id();
-    let original_inner_properties = point_entity.original_inner_properties().clone();
-    properties.insert("properties".to_string(), Value::Object(original_inner_properties));
-
-    // Optionally add specific fields here if needed in the output properties,
-    // accessing them via pattern matching or helper methods if they exist on the enum
-    if let DomainEntity::CapturedMarker(_marker) = point_entity {
-        properties.insert("objectId".to_string(), Value::String("Kugelmarker".to_string()));
-    }
-
-    Feature {
-        geometry: Some(geometry),
-        properties: Some(properties),
-        bbox: None,
-        id: Some(geojson::feature::Id::String(id.to_string())),
-        foreign_members: None,
-    }
-}
-
 #[allow(dead_code)]
 fn convert_domain_entity_to_geojson_feature(domain_entity: DomainEntity) -> Feature {
-    match domain_entity {
+    match &domain_entity {
         // Match all Point variants and bind the enum value to `point_entity`
-        point_entity @ DomainEntity::CapturedMarker(_) |
-        point_entity @ DomainEntity::SupplyPoint(_) |
-        point_entity @ DomainEntity::OperationSite(_) |
-        point_entity @ DomainEntity::DrillingPoint(_) |
-        point_entity @ DomainEntity::CableTunnel(_) => {
-            // `point_entity` is the owned DomainEntity value (e.g., DomainEntity::CapturedMarker(...))
-            // Pass a reference to this value to the helper
-            convert_point_entity_to_geojson_feature(&point_entity)
-        }
-        DomainEntity::Unknown(feature) => feature,
+        entity_ref @ DomainEntity::CapturedMarker(_) |
+         entity_ref @ DomainEntity::SupplyPoint(_) |
+         entity_ref @ DomainEntity::OperationSite(_) |
+         entity_ref @ DomainEntity::DrillingPoint(_) |
+         entity_ref @ DomainEntity::CableTunnel(_) |
+         entity_ref @ DomainEntity::Unknown(_) // Also include Unknown here
+         => {
+             entity_ref.into() // Calls the Into<Feature> for &DomainEntity impl
+         }
     }
 }
 
