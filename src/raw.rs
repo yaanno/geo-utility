@@ -10,7 +10,7 @@ pub enum Error {
 }
 
 // This function processes a single feature without converting to domain-specific structs
-fn process_raw_feature(mut feature: geojson::Feature) -> geojson::Feature {
+fn process_raw_feature(feature: geojson::Feature) -> geojson::Feature {
     let feature_id = feature.id.clone(); // Keep the original ID
 
     let properties = Map::with_capacity(1);
@@ -37,18 +37,22 @@ fn process_raw_feature(mut feature: geojson::Feature) -> geojson::Feature {
             match geo_geom {
                 geo::Geometry::Point(point) => {
                     // Return the processed feature (with original geometry and modified properties)
-                    feature.geometry = Some(Geometry::from(&point)); // Convert geo::Point back to geojson::Geometry
-                    feature.properties = Some(properties); // Use the modified properties
-                    feature.bbox = feature.bbox; // Keep original bbox or recalculate
-                    feature.foreign_members = feature.foreign_members; // Keep original
-                    feature
+                    geojson::Feature {
+                        id: feature_id,
+                        geometry: Some(Geometry::from(&point)), // Pass reference to Point
+                        properties: Some(properties),
+                        bbox: feature.bbox,
+                        foreign_members: feature.foreign_members,
+                    }
                 }
                 geo::Geometry::Polygon(polygon) => {
-                    feature.geometry = Some(Geometry::from(&polygon)); // Convert geo::Polygon back
-                    feature.properties = Some(properties);
-                    feature.bbox = feature.bbox;
-                    feature.foreign_members = feature.foreign_members;
-                    feature
+                    geojson::Feature {
+                        id: feature_id,
+                        geometry: Some(Geometry::from(&polygon)), // Convert geo::Polygon back
+                        properties: Some(properties),
+                        bbox: feature.bbox,
+                        foreign_members: feature.foreign_members,
+                    }
                 }
                 geo::Geometry::MultiPolygon(mp) => {
                     geojson::Feature {
@@ -61,21 +65,31 @@ fn process_raw_feature(mut feature: geojson::Feature) -> geojson::Feature {
                 }
                 geo::Geometry::LineString(ls) => {
                     if ls.is_closed() {
-                        feature.geometry = Some(Geometry::from(&ls));
-                        feature.properties = Some(properties);
-                        feature.bbox = feature.bbox;
-                        feature.foreign_members = feature.foreign_members;
-                        feature
+                        geojson::Feature {
+                            id: feature_id,
+                            geometry: Some(Geometry::from(&ls)),
+                            properties: Some(properties),
+                            bbox: feature.bbox,
+                            foreign_members: feature.foreign_members,
+                        }
                     } else {
                         // It's a LineString with objectId "Gebaeude", but not closed - handle as Unknown or specific error
-                        feature.geometry = Some(Geometry::from(&ls));
-                        feature.properties = Some(properties);
-                        feature.bbox = feature.bbox;
-                        feature.foreign_members = feature.foreign_members;
-                        feature
+                        geojson::Feature {
+                            id: feature_id,
+                            geometry: Some(Geometry::from(&ls)),
+                            properties: Some(properties),
+                            bbox: feature.bbox,
+                            foreign_members: feature.foreign_members,
+                        }
                     } // Or modify properties to indicate error
                 }
-                _ => feature,
+                _ => geojson::Feature {
+                    id: feature_id,
+                    geometry: None,
+                    properties: Some(properties),
+                    bbox: feature.bbox,
+                    foreign_members: feature.foreign_members,
+                },
             }
         }
         None => {
@@ -102,7 +116,7 @@ pub fn process_raw_geojson(geojson: GeoJson) -> Result<(), Error> {
     let _processed_features: Vec<geojson::Feature> = feature_collection
         .features
         .into_iter()
-        .map(process_raw_feature) // Apply the raw processing function
+        .map(process_raw_feature)
         .collect();
 
     Ok(())
