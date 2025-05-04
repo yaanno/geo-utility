@@ -127,7 +127,7 @@ impl Into<Feature> for &Building {
 
         // Add objectId back to output properties if present in original inner (optional)
         if let Some(Value::String(obj_id)) = self.original_inner_properties.get("objectId") {
-             properties.insert("objectId".to_string(), Value::String(obj_id.clone()));
+            properties.insert("objectId".to_string(), Value::String(obj_id.clone()));
         }
         // Add Building-specific fields to output properties if needed
 
@@ -355,7 +355,8 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
     let outer_properties = match &feature.properties {
         Some(properties) => properties,
         None => {
-            // eprintln!("Skipping feature {:?} with no properties", feature_id);
+            #[cfg(debug_assertions)]
+            eprintln!("Skipping feature {:?} with no properties", feature_id);
             return DomainEntity::Unknown(original_feature);
         }
     };
@@ -364,6 +365,7 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
         Some(Value::String(s)) => match from_str(s) {
             Ok(properties) => properties,
             Err(e) => {
+                #[cfg(debug_assertions)]
                 eprintln!(
                     "Inner properties string failed to parse for feature {}: {}",
                     feature_id, e
@@ -373,10 +375,11 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
         },
         Some(Value::Object(properties)) => properties.clone(),
         _ => {
-            // eprintln!(
-            //     "Outer properties['properties'] is missing or not string/object for feature {}",
-            //     feature_id
-            // );
+            #[cfg(debug_assertions)]
+            eprintln!(
+                "Outer properties['properties'] is missing or not string/object for feature {}",
+                feature_id
+            );
             return DomainEntity::Unknown(original_feature);
         }
     };
@@ -417,18 +420,23 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
                                     match GeoRustGeometry::try_from(geom) {
                                         Ok(geo_geom) => geo_geom, // Successfully converted to GeoRustGeometry
                                         Err(e) => {
-                                             let geojson_type = geom.value.type_name();
-                                             let conversion_error = Error::GeometryConversionError(Box::new(e));
-                                             eprintln!(
+                                            let geojson_type = geom.value.type_name();
+                                            let conversion_error =
+                                                Error::GeometryConversionError(Box::new(e));
+                                            eprintln!(
                                                 "Failed to convert geojson::{} to geo::Geometry for Building (feature {}): {}",
                                                 geojson_type, feature_id, conversion_error
-                                             );
+                                            );
                                             return DomainEntity::Unknown(original_feature); // Conversion error
                                         }
                                     }
                                 }
                                 None => {
-                                    eprintln!("Geometry is missing for Building (feature {})", feature_id);
+                                    #[cfg(debug_assertions)]
+                                    eprintln!(
+                                        "Geometry is missing for Building (feature {})",
+                                        feature_id
+                                    );
                                     return DomainEntity::Unknown(original_feature); // Missing geometry
                                 }
                             };
@@ -450,31 +458,38 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
                                 GeoRustGeometry::LineString(ls) => {
                                     // Allowed type: Closed LineString
                                     if ls.is_closed() {
-                                       DomainEntity::Building(Building {
-                                           id: feature_id,
-                                           geometry: GeoRustGeometry::LineString(ls), // Store the LineString
-                                           original_inner_properties: inner_properties,
-                                           // Add other specific fields
-                                       })
+                                        DomainEntity::Building(Building {
+                                            id: feature_id,
+                                            geometry: GeoRustGeometry::LineString(ls), // Store the LineString
+                                            original_inner_properties: inner_properties,
+                                            // Add other specific fields
+                                        })
                                     } else {
-                                       eprintln!("LineString geometry for Building (feature {}) is not closed", feature_id);
-                                       DomainEntity::Unknown(original_feature) // LineString but not closed
+                                        #[cfg(debug_assertions)]
+                                        eprintln!(
+                                            "LineString geometry for Building (feature {}) is not closed",
+                                            feature_id
+                                        );
+                                        DomainEntity::Unknown(original_feature) // LineString but not closed
                                     }
-                               }
-                               // Disallowed geometry type for Building
-                               other_geometry => {
+                                }
+                                // Disallowed geometry type for Building
+                                other_geometry => {
+                                    #[cfg(debug_assertions)]
                                     eprintln!(
                                         "Disallowed geometry type for Building (feature {}): {:?}",
-                                        feature_id, other_geometry // Use geom_type() for better logging
+                                        feature_id,
+                                        other_geometry // Use geom_type() for better logging
                                     );
                                     DomainEntity::Unknown(original_feature)
-                               }
+                                }
                             }
                         }
                     }
                 }
                 Err(Error::InvalidObjectId(unrecognized_id_string)) => {
                     // This branch handles valid strings that are NOT known ObjectIds
+                    #[cfg(debug_assertions)]
                     eprintln!(
                         "Unrecognized objectId string: {} for feature {}",
                         unrecognized_id_string, feature_id
@@ -482,6 +497,7 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
                     DomainEntity::Unknown(original_feature)
                 }
                 Err(e) => {
+                    #[cfg(debug_assertions)]
                     eprintln!(
                         "Failed to convert objectId for feature {}: {}",
                         feature_id, e
@@ -492,7 +508,8 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
         }
         // --- Fallback for missing or invalid objectId type ---
         _ => {
-             eprintln!(
+            #[cfg(debug_assertions)]
+            eprintln!(
                 "Missing or invalid 'objectId' in inner properties for feature {}",
                 feature_id
             );
@@ -533,7 +550,8 @@ fn get_point_geometry(
     let geometry = match &geometry_option {
         Some(geom) => geom,
         None => {
-            eprintln!(  
+            #[cfg(debug_assertions)]
+            eprintln!(
                 "Geometry is missing for objectId '{}' (feature {})",
                 object_id_value, feature_id
             );
@@ -547,6 +565,7 @@ fn get_point_geometry(
             let geojson_type = geometry.value.type_name();
             // Use the new specific error variant
             let conversion_error = Error::GeometryConversionError(Box::new(e));
+            #[cfg(debug_assertions)]
             eprintln!(
                 "Failed to convert geojson::{} to geo::Point for objectId '{}' (feature {}): {}",
                 geojson_type,

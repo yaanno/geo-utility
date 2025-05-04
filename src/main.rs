@@ -2,15 +2,16 @@ use std::fs::File;
 use std::io::Write;
 
 use geo_utility::generation::complex::generate_synthetic_complex_featurecollection;
-use geo_utility::generation::linestrings::generate_synthetic_linestrings;
+use geo_utility::generation::deterministic_feature_collection::generate_deterministic_feature_collection;
 use geo_utility::generation::featurecollection::generate_synthetic_featurecollection;
-
+use geo_utility::generation::linestrings::generate_synthetic_linestrings;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    generate_synthetic_collection_data()?;
+    // generate_synthetic_collection_data()?;
     // generate_synthetic_complex_collection_data()?;
     // calculate_bounding_box();
-
+    // generate_deterministic_collection_data()?;
+    generate_deterministic_collection_data()?;
     Ok(())
 }
 
@@ -39,7 +40,7 @@ fn generate_synthetic_data() -> Result<(), Box<dyn std::error::Error>> {
 
 #[allow(dead_code)]
 fn generate_synthetic_collection_data() -> Result<(), Box<dyn std::error::Error>> {
-    let num_features = 100;
+    let num_features = 1_000_000;
     let x_range = (-1000.0, 1000.0);
     let y_range = (-1000.0, 1000.0);
 
@@ -78,13 +79,37 @@ fn generate_synthetic_complex_collection_data() -> Result<(), Box<dyn std::error
     println!("Generating {} features...", num_features);
     let feature_collection2 =
         generate_synthetic_complex_featurecollection(num_features, x_range, y_range);
-    feature_collection.features.extend(feature_collection2.features); // Extend the existing feature collection with the new one
+    feature_collection
+        .features
+        .extend(feature_collection2.features); // Extend the existing feature collection with the new one
     println!("Generation complete. Serializing to JSON...");
 
     let geojson_string = serde_json::to_string(&feature_collection)?;
 
     let file_path = format!(
         "synthetic_data_complex_featurecollection_{}k_features.geojson",
+        num_features / 1000
+    );
+    let mut file = File::create(&file_path)?;
+    file.write_all(geojson_string.as_bytes())?;
+
+    println!("Data saved to {}", file_path);
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn generate_deterministic_collection_data() -> Result<(), Box<dyn std::error::Error>> {
+    let num_features = 1_000_000;
+
+    println!("Generating {} features...", num_features);
+    let feature_collection = generate_deterministic_feature_collection(num_features);
+    println!("Generation complete. Serializing to JSON...");
+
+    let geojson_string = serde_json::to_string(&feature_collection)?;
+
+    let file_path = format!(
+        "deterministic_data_featurecollection_{}k_features.geojson",
         num_features / 1000
     );
     let mut file = File::create(&file_path)?;

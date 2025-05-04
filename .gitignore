@@ -39,6 +39,7 @@ coverage/
 
 # Benchmark sample data
 synthetic_data_*.geojson
+deterministic*.geojson
 
 # Benchmark output
 *.out

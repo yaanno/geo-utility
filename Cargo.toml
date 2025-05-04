@@ -44,5 +44,10 @@ name = "domain_bench"
 path = "benches/domain_bench.rs"
 harness = false
 
+[[bench]]
+name = "raw_bench"
+path = "benches/raw_bench.rs"
+harness = false
+
 [profile.bench]
 debug = true

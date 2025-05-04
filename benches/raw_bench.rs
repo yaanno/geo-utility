@@ -3,7 +3,7 @@ use std::io::Read;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 
-use geo_utility::domain::indentify_domain_entities;
+use geo_utility::raw::process_raw_geojson;
 use geojson::GeoJson;
 
 fn load_features_from_file(file_path: &str) -> GeoJson {
@@ -18,10 +18,10 @@ fn bench_100_features(c: &mut Criterion) {
     let features_100 =
         load_features_from_file("deterministic_data_featurecollection_0k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_500_features", |b| {
+    c.bench_function("process_raw_geojson_500_features", |b| {
         b.iter(|| {
             let input_data = features_100.clone();
-            let results = indentify_domain_entities(input_data);
+            let results = process_raw_geojson(input_data);
             black_box(results.unwrap());
         })
     });
@@ -31,10 +31,10 @@ fn bench_1k_features(c: &mut Criterion) {
     let features_1k =
         load_features_from_file("deterministic_data_featurecollection_1k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_5k_features", |b| {
+    c.bench_function("process_raw_geojson_5k_features", |b| {
         b.iter(|| {
             let input_data = features_1k.clone();
-            let results = indentify_domain_entities(input_data);
+            let results = process_raw_geojson(input_data);
             black_box(results.unwrap());
         })
     });
@@ -44,10 +44,10 @@ fn bench_10k_features(c: &mut Criterion) {
     let features_10k =
         load_features_from_file("deterministic_data_featurecollection_10k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_50k_features", |b| {
+    c.bench_function("process_raw_geojson_50k_features", |b| {
         b.iter(|| {
             let input_data = features_10k.clone();
-            let results = indentify_domain_entities(input_data);
+            let results = process_raw_geojson(input_data);
             black_box(results.unwrap());
         })
     });
@@ -57,10 +57,10 @@ fn bench_100k_features(c: &mut Criterion) {
     let features_100k =
         load_features_from_file("deterministic_data_featurecollection_100k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_500k_features", |b| {
+    c.bench_function("process_raw_geojson_500k_features", |b| {
         b.iter(|| {
             let input_data = features_100k.clone();
-            let results = indentify_domain_entities(input_data);
+            let results = process_raw_geojson(input_data);
             black_box(results.unwrap());
         })
     });
@@ -70,10 +70,10 @@ fn bench_1000k_features(c: &mut Criterion) {
     let features_1m =
         load_features_from_file("deterministic_data_featurecollection_1000k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_1000k_features", |b| {
+    c.bench_function("process_raw_geojson_1000k_features", |b| {
         b.iter(|| {
             let input_data = features_1m.clone();
-            let results = indentify_domain_entities(input_data);
+            let results = process_raw_geojson(input_data);
             black_box(results.unwrap());
         })
     });
@@ -83,10 +83,10 @@ fn bench_10_000k_features(c: &mut Criterion) {
     let features_1m =
         load_features_from_file("deterministic_data_featurecollection_10000k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_10_000k_features", |b| {
+    c.bench_function("process_raw_geojson_10_000k_features", |b| {
         b.iter(|| {
             let input_data = features_1m.clone();
-            let results = indentify_domain_entities(input_data);
+            let results = process_raw_geojson(input_data);
             black_box(results.unwrap());
         })
     });
