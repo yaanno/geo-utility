@@ -14,6 +14,19 @@ fn load_features_from_file(file_path: &str) -> FeatureCollection {
     serde_json::from_str(&geojson_string).expect("Failed to parse GeoJSON")
 }
 
+fn bench_100_features(c: &mut Criterion) {
+    let features_100 =
+        load_features_from_file("synthetic_data_complex_featurecollection_0k_features.geojson");
+
+    c.bench_function("collect_convex_boundingboxes_100_features", |b| {
+        b.iter(|| {
+            let input_data = &features_100;
+            let results = collect_convex_boundingboxes(input_data);
+            black_box(results.unwrap());
+        })
+    });
+}
+
 fn bench_1k_features(c: &mut Criterion) {
     let features_1k =
         load_features_from_file("synthetic_data_complex_featurecollection_1k_features.geojson");
@@ -67,6 +80,13 @@ fn bench_1000k_features(c: &mut Criterion) {
 }
 
 criterion_group!(
+    name = benches_100;
+    config = Criterion::default().sample_size(50);
+    targets = bench_100_features
+);
+
+
+criterion_group!(
     name = benches_1k;
     config = Criterion::default().sample_size(50);
     targets = bench_1k_features
@@ -90,4 +110,4 @@ criterion_group!(
     targets = bench_1000k_features
 );
 
-criterion_main!(benches_1k, benches_10k, benches_100k, benches_1000k);
+criterion_main!(benches_100, benches_1k, benches_10k, benches_100k, /*benches_1000k*/);

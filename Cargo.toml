@@ -16,7 +16,7 @@ rstar = "0.12.2"
 ordered-float = "2.0"
 union-find = "0.4.3"
 rayon = "1.10.0"
-
+serde = { version = "1.0.219", features = ["derive"] }
 [dev-dependencies]
 criterion = "0.5"
 
@@ -53,6 +53,11 @@ harness = false
 [[bench]]
 name = "raw_parallel_bench"
 path = "benches/raw_parallel_bench.rs"
+harness = false
+
+[[bench]]
+name = "simple_bench"
+path = "benches/simple_bench.rs"
 harness = false
 
 [profile.bench]

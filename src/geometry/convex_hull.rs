@@ -1,24 +1,25 @@
 // Collects convex bounding boxes from a geojson FeatureCollection.
 
-use geo::algorithm::convex_hull::ConvexHull; // Import the ConvexHull trait
+use geo::algorithm::convex_hull::ConvexHull;
 use geo::geometry::{LineString as GeoLineString, MultiPoint};
-use geo::{BoundingRect, Coord, Intersects, Point, Rect}; // Import other necessary geo types
-use geojson::{FeatureCollection, Value};
+use geo::{BoundingRect, Coord, Intersects, Point, Rect};
+use geojson::{FeatureCollection, Value, Feature};
 use ordered_float::OrderedFloat;
 use std::collections::HashSet;
 use thiserror::Error;
 
 use crate::utils::utils::{InBoundingBox, GERMANY_BBOX};
 
-// Define error type (kept as is, though less frequently returned now)
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Invalid geometry type")]
-    UnsupportedGeometryType, // This specific error is no longer returned by the main function flow
+    UnsupportedGeometryType,
     #[error("Missing geometry")]
-    MissingGeometry, // This specific error is no longer returned by the main function flow
+    MissingGeometry,
     #[error("Invalid coordinates")]
-    InvalidCoordinates, // This specific error is no longer returned by the main function flow
+    InvalidCoordinates,
+    #[error("Internal processing error")]
+    InternalProcessingError,
 }
 
 /// Creates a canonical representation of polygon points for hashing purposes.
@@ -41,238 +42,263 @@ fn canonical_hull_unique_sorted_points(
     let mut sorted_unique: Vec<(OrderedFloat<f64>, OrderedFloat<f64>)> = coords
         .into_iter()
         .map(|c| (OrderedFloat(c.x), OrderedFloat(c.y)))
-        .collect::<HashSet<_>>() // Collect unique points into a HashSet first
-        .into_iter() // Iterate the unique points
-        .collect(); // Collect into a Vec
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
 
-    sorted_unique.sort(); // Sorting tuples of OrderedFloat works naturally
+    sorted_unique.sort();
 
     sorted_unique
 }
 
-/// Collects convex bounding boxes and fallback bounding box polygons
-/// from a geojson FeatureCollection.
+/// Processes a single GeoJSON feature to extract either its convex hull or a
+/// bounding box polygon if it's within the specified Germany boundaries.
+///
+/// Filters by feature bbox, extracts coordinates based on geometry type, checks
+/// if all points are within Germany, and generates either a convex hull (>= 3
+/// unique points) or a bounding box polygon (< 3 unique points).
 ///
 /// # Arguments
-/// * `featurecollection` - The FeatureCollection from which to collect bounding box polygons.
+/// * `feature` - The GeoJSON feature to process.
+/// * `germany_rect` - The bounding rectangle for Germany for intersection checks.
 ///
 /// # Returns
-/// A vector of polygons, including convex hulls for features with >= 3 unique points
-/// and bounding box polygons for features with < 3 unique points that can form a bounding box.
-/// # Errors
-/// Returns an error if the geometry type is unsupported or if there are invalid coordinates.
-pub fn collect_convex_boundingboxes(
-    // Renamed the function to reflect fallback
-    featurecollection: &FeatureCollection,
-) -> Result<Vec<geo::Polygon>, Error> {
-    let mut hulls: Vec<geo::Polygon> = Vec::new();
-    let germany_rect: Rect = Rect::new(
-        Coord {
-            x: 5.866211,
-            y: 47.270111,
-        },
-        Coord {
-            x: 15.013611,
-            y: 55.058333,
-        },
-    );
+/// `Some(geo::Polygon)` containing the generated hull or bounding box polygon
+/// if the feature meets the criteria, otherwise `None`.
+fn process_single_feature(
+    feature: &Feature,
+    germany_rect: &Rect,
+) -> Option<geo::Polygon> {
+    // --- Early Filtering using Feature Bounding Box ---
+    // Check feature bbox intersection with Germany bbox
+    if let Some(feature_bbox_value) = &feature.bbox {
+        if feature_bbox_value.len() >= 4 {
+            let feature_rect = Rect::new(
+                Coord {
+                    x: feature_bbox_value[0],
+                    y: feature_bbox_value[1],
+                },
+                Coord {
+                    x: feature_bbox_value[2],
+                    y: feature_bbox_value[3],
+                },
+            );
 
-    for feature in &featurecollection.features {
-        // --- Early Filtering using Feature Bounding Box ---
-        if let Some(feature_bbox_value) = &feature.bbox {
-            if feature_bbox_value.len() >= 4 {
-                let feature_rect = Rect::new(
-                    Coord {
-                        x: feature_bbox_value[0],
-                        y: feature_bbox_value[1],
-                    },
-                    Coord {
-                        x: feature_bbox_value[2],
-                        y: feature_bbox_value[3],
-                    },
-                );
-
-                if !feature_rect.intersects(&germany_rect) {
-                    continue;
-                }
+            if !feature_rect.intersects(germany_rect) {
+                return None; // Skip feature if its bbox doesn't intersect Germany
             }
-        }
-
-        // --- Extract geometry and check location based on type ---
-        let geometry_value = match feature.geometry.as_ref() {
-            Some(geometry) => &geometry.value,
-            None => {
-                continue; // Skip features without geometry
-            }
-        };
-
-        let mut coords: Vec<Coord> = Vec::new();
-        let mut all_points_in_germany = true;
-        let mut geometry_to_process: Option<geo::Geometry> = None; // Store geo::Geometry for fallback bbox calculation
-
-        // Extract coordinates and check location based on geometry type
-        // Also create geo::Geometry for fallback bounding_rect calculation
-        match geometry_value {
-            Value::Point(coord) => {
-                let geo_coord = Coord {
-                    x: coord[0],
-                    y: coord[1],
-                };
-                if geo_coord.in_bounding_box(&GERMANY_BBOX) {
-                    coords.push(geo_coord); // Use for unique count check
-                    geometry_to_process = Some(geo::Geometry::Point(Point::from(geo_coord))); // Create geo::Point for bbox
-                } else {
-                    all_points_in_germany = false;
-                }
-            }
-            Value::LineString(line_coords) => {
-                let line_coords_geo: Vec<Coord> = line_coords
-                    .iter()
-                    .map(|c| Coord { x: c[0], y: c[1] })
-                    .collect();
-                if line_coords_geo
-                    .iter()
-                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-                {
-                    all_points_in_germany = false;
-                } else {
-                    coords.extend(line_coords_geo.clone()); // Use for unique count check
-                    geometry_to_process = Some(geo::Geometry::LineString(GeoLineString::new(
-                        line_coords_geo,
-                    ))); // Create geo::LineString for bbox
-                }
-            }
-            Value::Polygon(polygon_coords) => {
-                // Extract coords from exterior ring; interior rings don't affect convex hull
-                if let Some(exterior_ring_coords) = polygon_coords.first() {
-                    let exterior_ring_geo_coords: Vec<Coord> = exterior_ring_coords
-                        .iter()
-                        .map(|c| Coord { x: c[0], y: c[1] })
-                        .collect();
-                    if exterior_ring_geo_coords
-                        .iter()
-                        .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-                    {
-                        all_points_in_germany = false;
-                    } else {
-                        coords.extend(exterior_ring_geo_coords); // Use for unique count check
-                        // For Polygon, we'll likely calculate convex hull directly if >=3 points
-                        // No need to store the full polygon geometry_to_process here unless needed elsewhere
-                    }
-                } else {
-                    // Polygon has no exterior ring, skip
-                    continue;
-                }
-            }
-            // Add other geometry types here (MultiPoint, MultiLineString, MultiPolygon)
-            // Extract their coordinates, check if in Germany, and if applicable,
-            // create the corresponding geo::Geometry value for geometry_to_process.
-            Value::MultiPoint(point_coords_vec) => {
-                let multipoint_geo_coords: Vec<Coord> = point_coords_vec
-                    .iter()
-                    .map(|c| Coord { x: c[0], y: c[1] })
-                    .collect();
-                if multipoint_geo_coords
-                    .iter()
-                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-                {
-                    all_points_in_germany = false;
-                } else {
-                    coords.extend(multipoint_geo_coords.clone()); // Use for unique count check
-                    if !multipoint_geo_coords.is_empty() {
-                        geometry_to_process = Some(geo::Geometry::MultiPoint(MultiPoint::new(
-                            multipoint_geo_coords.into_iter().map(Point::from).collect(),
-                        )));
-                    }
-                }
-            }
-            Value::MultiLineString(multiline_coords_vec) => {
-                let multiline_geo_coords: Vec<Coord> = multiline_coords_vec
-                    .iter()
-                    .flatten()
-                    .map(|c| Coord { x: c[0], y: c[1] })
-                    .collect();
-                if multiline_geo_coords
-                    .iter()
-                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-                {
-                    all_points_in_germany = false;
-                } else {
-                    coords.extend(multiline_geo_coords.clone()); // Use for unique count check
-                    // Creating a geo::MultiLineString from flatten coords is tricky,
-                    // but we can use the flatten coords for convex hull/bbox.
-                    // Or process each LineString in MultiLineString individually if preferred.
-                    // For a simple bbox fallback, we can use the flattened coords.
-                    if !multiline_geo_coords.is_empty() {
-                        // Note: Creating a single LineString from flattened MultiLineString coords might not preserve structure
-                        // but works for overall bbox. Consider iterating MultiLineString sections if precise per-line bbox needed.
-                        geometry_to_process = Some(geo::Geometry::LineString(GeoLineString::new(
-                            multiline_geo_coords,
-                        ))); // Using LineString for simplicity here, bbox is the same
-                    }
-                }
-            }
-            Value::MultiPolygon(multipolygon_coords_vec) => {
-                let all_exterior_coords: Vec<Coord> = multipolygon_coords_vec
-                    .iter()
-                    .filter_map(|poly| poly.first())
-                    .flatten()
-                    .map(|c| Coord { x: c[0], y: c[1] })
-                    .collect();
-
-                if all_exterior_coords
-                    .iter()
-                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-                {
-                    all_points_in_germany = false;
-                } else {
-                    coords.extend(all_exterior_coords.clone()); // Use for unique count check
-                    // Similar to MultiLineString, creating the full geo::MultiPolygon is more complex
-                    // We'll rely on extracted coords for hull/bbox
-                }
-            }
-            _ => {
-                // Skip unsupported geometry types
-                continue;
-            }
-        }
-
-        // 2. Check if all relevant points were in Germany
-        if !all_points_in_germany {
-            continue; // Skip features that were not entirely within Germany bbox
-        }
-
-        // 3. Check number of *unique* points derived from the geometry
-        let unique_coords_count = coords
-            .iter()
-            .map(|c| (OrderedFloat(c.x), OrderedFloat(c.y)))
-            .collect::<HashSet<_>>()
-            .len();
-
-        if unique_coords_count < 3 {
-            // --- FALLBACK: Calculate bounding box and convert to polygon ---
-            // Need to handle the case where `geometry_to_process` might not have been set
-            // for some geometry types or empty collections resulted in all_points_in_germany = true but no coords
-            let fallback_polygon = geometry_to_process
-                .as_ref() // Get a reference to the geo::Geometry
-                .and_then(|geom| geom.bounding_rect()) // Try to get the bounding Rect
-                .map(|rect| rect.to_polygon()); // Convert the Rect to a Polygon
-
-            if let Some(poly) = fallback_polygon {
-                hulls.push(poly);
-            }
-            // else: If bounding_rect() failed (e.g. empty geometry or invalid), we just don't add anything for this feature.
-        } else {
-            // --- CONVEX HULL (Original Logic) ---
-            // Compute the convex hull (use the original `coords` list which might have > unique_coords_count points)
-            let multi_point = MultiPoint::from(coords);
-            let hull = multi_point.convex_hull(); // This will be a geo::Polygon because unique_coords_count >= 3
-
-            hulls.push(hull); // Collect the computed hull
         }
     }
 
-    // --- Post-processing step: Filter out duplicate hulls (including fallback ones) ---
+    // --- Extract geometry and check location based on type ---
+    let geometry_value = match feature.geometry.as_ref() {
+        Some(geometry) => &geometry.value,
+        None => {
+            return None; // Skip features without geometry
+        }
+    };
+
+    let mut coords: Vec<Coord> = Vec::new();
+    let mut all_points_in_germany = true;
+    let mut geometry_for_fallback_bbox: Option<geo::Geometry> = None; // Store geo::Geometry for fallback bbox calculation
+
+    // Extract coordinates, check location, and prepare geo::Geometry for fallback
+    match geometry_value {
+        Value::Point(coord) => {
+            let geo_coord = Coord {
+                x: coord[0],
+                y: coord[1],
+            };
+            if geo_coord.in_bounding_box(&GERMANY_BBOX) {
+                coords.push(geo_coord); // Use for unique count check
+                geometry_for_fallback_bbox = Some(geo::Geometry::Point(Point::from(geo_coord))); // Create geo::Point for bbox
+            } else {
+                all_points_in_germany = false;
+            }
+        }
+        Value::LineString(line_coords) => {
+            let line_coords_geo: Vec<Coord> = line_coords
+                .iter()
+                .map(|c| Coord { x: c[0], y: c[1] })
+                .collect();
+            if line_coords_geo
+                .iter()
+                .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
+            {
+                all_points_in_germany = false;
+            } else {
+                coords.extend(line_coords_geo.clone()); // Use for unique count check
+                geometry_for_fallback_bbox = Some(geo::Geometry::LineString(GeoLineString::new(
+                    line_coords_geo,
+                ))); // Create geo::LineString for bbox
+            }
+        }
+        Value::Polygon(polygon_coords) => {
+            // Extract coords from exterior ring; interior rings don't affect convex hull
+            if let Some(exterior_ring_coords) = polygon_coords.first() {
+                let exterior_ring_geo_coords: Vec<Coord> = exterior_ring_coords
+                    .iter()
+                    .map(|c| Coord { x: c[0], y: c[1] })
+                    .collect();
+                if exterior_ring_geo_coords
+                    .iter()
+                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
+                {
+                    all_points_in_germany = false;
+                } else {
+                    coords.extend(&exterior_ring_geo_coords); // Use for unique count check
+                    // Store the polygon geometry for potential fallback bbox if needed (though convex hull is primary for polygons)
+                    // Note: Constructing a full geo::Polygon from geojson Vec<Vec<Vec<f64>>> is more complex,
+                    // relying on extracted points for hull/bbox is simpler here.
+                    // If needing the full polygon for fallback, you'd parse the interior rings too.
+                    // Let's rely on extracted coords for unique count and hull/bbox.
+                    if !exterior_ring_geo_coords.is_empty() {
+                         // Note: BoundingRect on Polygon includes interior rings if they exist.
+                         // For simplicity and focus on convex hull/outer bbox, we use extracted coords.
+                         // If a precise Polygon BoundingRect was strictly needed for fallback, a full geo::Polygon parse would be required.
+                         // Let's use the extracted coords for unique_count and rely on the logic below.
+                         // If fallback is needed, and the geometry_for_fallback_bbox wasn't set (e.g., for Polygon/MultiPolygon),
+                         // we might fallback to using MultiPoint::from(coords).bounding_rect()
+                    } else {
+                         // Polygon has an empty exterior ring, treat as out of bounds or invalid for processing
+                         all_points_in_germany = false; // Effectively skips this feature
+                    }
+                }
+            } else {
+                // Polygon has no exterior ring, skip
+                return None;
+            }
+        }
+        // Add other geometry types here (MultiPoint, MultiLineString, MultiPolygon)
+        // Extract their coordinates, check if in Germany, and if applicable,
+        // create the corresponding geo::Geometry value for geometry_for_fallback_bbox.
+        Value::MultiPoint(point_coords_vec) => {
+            let multipoint_geo_coords: Vec<Coord> = point_coords_vec
+                .iter()
+                .map(|c| Coord { x: c[0], y: c[1] })
+                .collect();
+            if multipoint_geo_coords
+                .iter()
+                .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
+            {
+                all_points_in_germany = false;
+            } else {
+                coords.extend(multipoint_geo_coords.clone()); // Use for unique count check
+                if !multipoint_geo_coords.is_empty() {
+                    geometry_for_fallback_bbox = Some(geo::Geometry::MultiPoint(MultiPoint::new(
+                        multipoint_geo_coords.into_iter().map(Point::from).collect(),
+                    )));
+                }
+            }
+        }
+        Value::MultiLineString(multiline_coords_vec) => {
+            let multiline_geo_coords: Vec<Coord> = multiline_coords_vec
+                .iter()
+                .flatten()
+                .map(|c| Coord { x: c[0], y: c[1] })
+                .collect();
+            if multiline_geo_coords
+                .iter()
+                .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
+            {
+                all_points_in_germany = false;
+            } else {
+                coords.extend(multiline_geo_coords.clone()); // Use for unique count check
+                // Creating a geo::MultiLineString from flattened coords is tricky,
+                // but we can use the flatten coords for convex hull/bbox.
+                // Or process each LineString in MultiLineString individually if preferred.
+                // For a simple bbox fallback, we can use the flattened coords.
+                 if !multiline_geo_coords.is_empty() {
+                     // Note: Using LineString for simplicity here, bbox is the same for flattened points
+                     geometry_for_fallback_bbox = Some(geo::Geometry::LineString(GeoLineString::new(
+                         multiline_geo_coords,
+                     )));
+                 }
+            }
+        }
+        Value::MultiPolygon(multipolygon_coords_vec) => {
+            let all_exterior_coords: Vec<Coord> = multipolygon_coords_vec
+                .iter()
+                .filter_map(|poly| poly.first()) // Get exterior rings
+                .flatten() // Flatten points from all exterior rings
+                .map(|c| Coord { x: c[0], y: c[1] })
+                .collect();
+
+            if all_exterior_coords
+                .iter()
+                .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
+            {
+                all_points_in_germany = false;
+            } else {
+                coords.extend(all_exterior_coords.clone()); // Use for unique count check
+                 if !all_exterior_coords.is_empty() {
+                      // For MultiPolygon, rely on extracted coords for unique count and hull/bbox
+                      // A full geo::MultiPolygon parse for geometry_for_fallback_bbox is complex.
+                      // We can fall back to using MultiPoint::from(coords).bounding_rect() if needed.
+                 } else {
+                      // MultiPolygon has no non-empty exterior rings
+                      all_points_in_germany = false; // Effectively skips this feature
+                 }
+            }
+        }
+        _ => {
+            // Skip unsupported geometry types
+            return None;
+        }
+    }
+
+    // --- Final Location Check ---
+    if !all_points_in_germany {
+        return None; // Skip features that were not entirely within Germany bbox
+    }
+
+    // --- Check number of *unique* points derived from the geometry ---
+    let unique_coords_count = coords
+        .iter()
+        .map(|c| (OrderedFloat(c.x), OrderedFloat(c.y)))
+        .collect::<HashSet<_>>()
+        .len();
+
+    // --- Convex Hull vs. Fallback BBox Logic ---
+    if unique_coords_count < 3 {
+        // --- FALLBACK: Calculate bounding box and convert to polygon ---
+        // Try to get bbox from geometry_for_fallback_bbox first
+        let fallback_polygon = geometry_for_fallback_bbox
+             .as_ref()
+             .and_then(|geom| geom.bounding_rect())
+             .or_else(|| { // If geometry_for_fallback_bbox didn't yield a rect (e.g., complex types or empty coords)
+                  if !coords.is_empty() {
+                       // Fallback to computing bbox from collected coords
+                       let multi_point_from_coords = MultiPoint::new(coords.into_iter().map(Point::from).collect());
+                       multi_point_from_coords.bounding_rect()
+                  } else {
+                       None // No coords, no bbox
+                  }
+             })
+             .map(|rect| rect.to_polygon()); // Convert the Rect to a Polygon
+
+        fallback_polygon // Return the generated polygon or None
+    } else {
+        // --- CONVEX HULL (Original Logic) ---
+        // Compute the convex hull (use the original `coords` list which might have > unique_coords_count points)
+        let multi_point = MultiPoint::from(coords);
+        let hull = multi_point.convex_hull(); // This will be a geo::Polygon because unique_coords_count >= 3
+
+        Some(hull) // Return the computed hull
+    }
+}
+
+/// Filters a vector of polygons to remove duplicates based on their
+/// canonical representation (unique sorted points).
+///
+/// # Arguments
+/// * `hulls` - The vector of polygons potentially containing duplicates.
+///
+/// # Returns
+/// A new vector containing only the unique polygons.
+fn deduplicate_polygons(
+    hulls: Vec<geo::Polygon>
+) -> Vec<geo::Polygon> {
     let mut unique_hulls: Vec<geo::Polygon> = Vec::with_capacity(hulls.len());
     let mut seen_canonical_coords: HashSet<Vec<(OrderedFloat<f64>, OrderedFloat<f64>)>> =
         HashSet::with_capacity(hulls.len());
@@ -284,10 +310,58 @@ pub fn collect_convex_boundingboxes(
             unique_hulls.push(hull);
         }
     }
-    // --- End post-processing step ---
+    unique_hulls
+}
 
+
+/// Collects convex bounding boxes and fallback bounding box polygons
+/// from a geojson FeatureCollection.
+///
+/// Processes each feature, filters based on location within Germany, and
+/// generates either a convex hull or a bounding box polygon. Duplicates
+/// are removed at the end.
+///
+/// # Arguments
+/// * `featurecollection` - The FeatureCollection from which to collect bounding box polygons.
+///
+/// # Returns
+/// A vector of polygons, including convex hulls for features with >= 3 unique points
+/// and bounding box polygons for features with < 3 unique points that can form a bounding box.
+/// # Errors
+/// Returns an error if a critical internal processing issue occurs (less likely with current logic).
+pub fn collect_convex_boundingboxes(
+    featurecollection: &FeatureCollection,
+) -> Result<Vec<geo::Polygon>, Error> {
+    let germany_rect: Rect = Rect::new(
+        Coord {
+            x: 5.866211,
+            y: 47.270111,
+        },
+        Coord {
+            x: 15.013611,
+            y: 55.058333,
+        },
+    );
+
+    let mut raw_hulls: Vec<geo::Polygon> = Vec::new();
+
+    // Iterate through features and process each one individually
+    for feature in &featurecollection.features {
+        if let Some(polygon) = process_single_feature(feature, &germany_rect) {
+            raw_hulls.push(polygon);
+        }
+        // Errors during processing a single feature are handled by returning None and skipping
+    }
+
+    // Deduplicate the collected polygons
+    let unique_hulls = deduplicate_polygons(raw_hulls);
+
+    // The current logic skips invalid features or geometries, so we always return Ok
+    // unless a truly unexpected error occurred, which is not currently modeled.
+    // Keeping Result<(), Error> signature for consistency if needed later.
     Ok(unique_hulls)
 }
+
 
 #[allow(unused_imports)]
 mod tests {
