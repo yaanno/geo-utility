@@ -19,11 +19,15 @@ fn bench_100_features(c: &mut Criterion) {
         load_features_from_file("deterministic_data_featurecollection_0k_features.geojson");
 
     c.bench_function("process_raw_parallel_geojson_500_features", |b| {
-        b.iter(|| {
-            let input_data = features_100.clone();
-            let results = process_raw_geojson_parallel(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_100.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = process_raw_geojson_parallel(input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
@@ -32,11 +36,15 @@ fn bench_1k_features(c: &mut Criterion) {
         load_features_from_file("deterministic_data_featurecollection_1k_features.geojson");
 
     c.bench_function("process_raw_parallel_geojson_5k_features", |b| {
-        b.iter(|| {
-            let input_data = features_1k.clone();
-            let results = process_raw_geojson_parallel(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_1k.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = process_raw_geojson_parallel(input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
@@ -45,11 +53,15 @@ fn bench_10k_features(c: &mut Criterion) {
         load_features_from_file("deterministic_data_featurecollection_10k_features.geojson");
 
     c.bench_function("process_raw_parallel_geojson_50k_features", |b| {
-        b.iter(|| {
-            let input_data = features_10k.clone();
-            let results = process_raw_geojson_parallel(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_10k.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = process_raw_geojson_parallel(input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
@@ -58,11 +70,15 @@ fn bench_100k_features(c: &mut Criterion) {
         load_features_from_file("deterministic_data_featurecollection_100k_features.geojson");
 
     c.bench_function("process_raw_parallel_geojson_500k_features", |b| {
-        b.iter(|| {
-            let input_data = features_100k.clone();
-            let results = process_raw_geojson_parallel(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_100k.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = process_raw_geojson_parallel(input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
@@ -71,11 +87,15 @@ fn bench_1000k_features(c: &mut Criterion) {
         load_features_from_file("deterministic_data_featurecollection_1000k_features.geojson");
 
     c.bench_function("process_raw_parallel_geojson_1000k_features", |b| {
-        b.iter(|| {
-            let input_data = features_1m.clone();
-            let results = process_raw_geojson_parallel(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_1m.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = process_raw_geojson_parallel(input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
@@ -84,11 +104,15 @@ fn bench_10_000k_features(c: &mut Criterion) {
         load_features_from_file("deterministic_data_featurecollection_10000k_features.geojson");
 
     c.bench_function("process_raw_parallel_geojson_10_000k_features", |b| {
-        b.iter(|| {
-            let input_data = features_1m.clone();
-            let results = process_raw_geojson_parallel(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_1m.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = process_raw_geojson_parallel(input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 

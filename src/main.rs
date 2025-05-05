@@ -8,11 +8,12 @@ use geo_utility::generation::linestrings::generate_synthetic_linestrings;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // generate_synthetic_collection_data()?;
-    generate_synthetic_complex_collection_data()?;
+    // generate_synthetic_complex_collection_data()?;
     // calculate_bounding_box();
     // generate_deterministic_collection_data()?;
     // generate_deterministic_collection_data()?;
     // generate_synthetic_data()?;
+    generate_synthetic_collection_data()?;
     Ok(())
 }
 
@@ -41,7 +42,7 @@ fn generate_synthetic_data() -> Result<(), Box<dyn std::error::Error>> {
 
 #[allow(dead_code)]
 fn generate_synthetic_collection_data() -> Result<(), Box<dyn std::error::Error>> {
-    let num_features = 1_000_000;
+    let num_features = 100_000;
     let x_range = (-1000.0, 1000.0);
     let y_range = (-1000.0, 1000.0);
 

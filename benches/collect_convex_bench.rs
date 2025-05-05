@@ -19,11 +19,15 @@ fn bench_100_features(c: &mut Criterion) {
         load_features_from_file("synthetic_data_complex_featurecollection_0k_features.geojson");
 
     c.bench_function("collect_convex_boundingboxes_100_features", |b| {
-        b.iter(|| {
-            let input_data = &features_100;
-            let results = collect_convex_boundingboxes(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_100.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = collect_convex_boundingboxes(&input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
@@ -32,11 +36,15 @@ fn bench_1k_features(c: &mut Criterion) {
         load_features_from_file("synthetic_data_complex_featurecollection_1k_features.geojson");
 
     c.bench_function("collect_convex_boundingboxes_1k_features", |b| {
-        b.iter(|| {
-            let input_data = &features_1k;
-            let results = collect_convex_boundingboxes(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_1k.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = collect_convex_boundingboxes(&input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
@@ -45,11 +53,15 @@ fn bench_10k_features(c: &mut Criterion) {
         load_features_from_file("synthetic_data_complex_featurecollection_10k_features.geojson");
 
     c.bench_function("collect_convex_boundingboxes_10k_features", |b| {
-        b.iter(|| {
-            let input_data = &features_10k;
-            let results = collect_convex_boundingboxes(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_10k.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = collect_convex_boundingboxes(&input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
@@ -58,11 +70,15 @@ fn bench_100k_features(c: &mut Criterion) {
         load_features_from_file("synthetic_data_complex_featurecollection_100k_features.geojson");
 
     c.bench_function("collect_convex_boundingboxes_100k_features", |b| {
-        b.iter(|| {
-            let input_data = &features_100k;
-            let results = collect_convex_boundingboxes(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_100k.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = collect_convex_boundingboxes(&input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
@@ -71,11 +87,15 @@ fn bench_1000k_features(c: &mut Criterion) {
         load_features_from_file("synthetic_data_complex_featurecollection_1000k_features.geojson");
 
     c.bench_function("collect_convex_boundingboxes_1000k_features", |b| {
-        b.iter(|| {
-            let input_data = &features_1m;
-            let results = collect_convex_boundingboxes(input_data);
-            black_box(results.unwrap());
-        })
+        b.iter_with_setup(
+            || {
+                features_1m.clone() // Clone the data here
+            },
+            |input_data| {
+                let results = collect_convex_boundingboxes(&input_data);
+                black_box(results.unwrap());
+            }
+        )
     });
 }
 
