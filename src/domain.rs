@@ -1,4 +1,4 @@
-use geo::{Geometry as GeoRustGeometry, Point};
+use geo::{Geometry as GeoGeometry, Point};
 use geojson::{Feature, FeatureCollection, GeoJson, Geometry, feature::Id};
 use serde_json::{Map, Value, from_str};
 use std::error::Error as StdError;
@@ -112,7 +112,7 @@ pub struct CableTunnel {
 #[derive(Debug, Clone)]
 pub struct Building {
     pub id: String,
-    pub geometry: GeoRustGeometry, // Assuming Kabelschachte are Points (if they appear in your data)
+    pub geometry: GeoGeometry, // Assuming Kabelschachte are Points (if they appear in your data)
     pub original_inner_properties: Map<String, Value>,
 }
 
@@ -120,7 +120,7 @@ pub struct Building {
 impl Into<Feature> for &Building {
     fn into(self) -> Feature {
         // Convert the geo::Geometry to geojson::Geometry
-        let geometry = Geometry::from(&self.geometry).clone(); // Convert GeoRustGeometry
+        let geometry = Geometry::from(&self.geometry).clone(); // Convert GeoGeometry
 
         // Clone the original inner properties
         let mut properties = self.original_inner_properties.clone();
@@ -202,8 +202,8 @@ impl Into<Feature> for &DomainEntity {
     }
 }
 
-impl From<DomainEntity> for GeoRustGeometry {
-    /// Helper function to convert a DomainEntity variant to a GeoRustGeometry variant.
+impl From<DomainEntity> for GeoGeometry {
+    /// Helper function to convert a DomainEntity variant to a GeoGeometry variant.
     ///
     /// # Arguments
     ///
@@ -211,16 +211,16 @@ impl From<DomainEntity> for GeoRustGeometry {
     ///
     /// # Returns
     ///
-    /// * `GeoRustGeometry` - The converted GeoRustGeometry variant.
+    /// * `GeoGeometry` - The converted GeoGeometry variant.
     fn from(value: DomainEntity) -> Self {
         match value {
-            DomainEntity::CapturedMarker(marker) => GeoRustGeometry::Point(marker.geometry),
-            DomainEntity::SupplyPoint(point) => GeoRustGeometry::Point(point.geometry),
-            DomainEntity::OperationSite(site) => GeoRustGeometry::Point(site.geometry),
-            DomainEntity::DrillingPoint(point) => GeoRustGeometry::Point(point.geometry),
-            DomainEntity::CableTunnel(tunnel) => GeoRustGeometry::Point(tunnel.geometry),
+            DomainEntity::CapturedMarker(marker) => GeoGeometry::Point(marker.geometry),
+            DomainEntity::SupplyPoint(point) => GeoGeometry::Point(point.geometry),
+            DomainEntity::OperationSite(site) => GeoGeometry::Point(site.geometry),
+            DomainEntity::DrillingPoint(point) => GeoGeometry::Point(point.geometry),
+            DomainEntity::CableTunnel(tunnel) => GeoGeometry::Point(tunnel.geometry),
             DomainEntity::Building(building) => building.geometry,
-            DomainEntity::Unknown(_) => GeoRustGeometry::Point(Point::new(0.0, 0.0)),
+            DomainEntity::Unknown(_) => GeoGeometry::Point(Point::new(0.0, 0.0)),
         }
     }
 }
@@ -417,8 +417,8 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
                             let building_geometry = match &building_geometry_option {
                                 Some(geom) => {
                                     // Try converting the geojson::Geometry into the general geo::Geometry enum
-                                    match GeoRustGeometry::try_from(geom) {
-                                        Ok(geo_geom) => geo_geom, // Successfully converted to GeoRustGeometry
+                                    match GeoGeometry::try_from(geom) {
+                                        Ok(geo_geom) => geo_geom, // Successfully converted to GeoGeometry
                                         Err(e) => {
                                             let geojson_type = geom.value.type_name();
                                             let conversion_error =
@@ -441,26 +441,26 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
                                 }
                             };
                             match building_geometry {
-                                GeoRustGeometry::Polygon(polygon) => {
+                                GeoGeometry::Polygon(polygon) => {
                                     DomainEntity::Building(Building {
                                         id: feature_id,
-                                        geometry: GeoRustGeometry::Polygon(polygon),
+                                        geometry: GeoGeometry::Polygon(polygon),
                                         original_inner_properties: inner_properties,
                                     })
                                 }
-                                GeoRustGeometry::MultiPolygon(multi_polygon) => {
+                                GeoGeometry::MultiPolygon(multi_polygon) => {
                                     DomainEntity::Building(Building {
                                         id: feature_id,
-                                        geometry: GeoRustGeometry::MultiPolygon(multi_polygon),
+                                        geometry: GeoGeometry::MultiPolygon(multi_polygon),
                                         original_inner_properties: inner_properties,
                                     })
                                 }
-                                GeoRustGeometry::LineString(ls) => {
+                                GeoGeometry::LineString(ls) => {
                                     // Allowed type: Closed LineString
                                     if ls.is_closed() {
                                         DomainEntity::Building(Building {
                                             id: feature_id,
-                                            geometry: GeoRustGeometry::LineString(ls), // Store the LineString
+                                            geometry: GeoGeometry::LineString(ls), // Store the LineString
                                             original_inner_properties: inner_properties,
                                             // Add other specific fields
                                         })
