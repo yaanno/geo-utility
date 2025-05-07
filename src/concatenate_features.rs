@@ -1,17 +1,14 @@
-use geo::{Coord, LineString, Point};
-use geojson::{Feature, FeatureCollection, Geometry, Value};
-use rstar::{Point as RStarPoint, PointDistance, RTree, RTreeObject};
-use serde_json::{Value as JsonValue, json}; // Import json! macro and JsonValue
+use geojson::{Feature, FeatureCollection, Geometry, JsonObject, Value};
+use rstar::{PointDistance, RTree, RTreeObject};
+use std::convert::TryInto;
 
 // Define the struct to be stored in the R-tree
-#[derive(Debug, Clone, Copy, PartialEq)] // Add PartialEq for assertions in tests
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 struct LineStringEndpoint {
-    // Use a fixed-size array for the point, compatible with rstar::Point
     point: [f64; 2],
-    // Index back to the original feature in the `line_strings` vector
-    feature_idx: usize,
-    // Is this the start or end point of the original line?
-    is_start: bool,
+    feature_idx: usize, // Index back to the original feature in the `line_strings` vector
+    is_start: bool,     // Is this the start or end point of the original line?
 }
 
 // Implement RTreeObject for our endpoint struct
@@ -23,67 +20,91 @@ impl RTreeObject for LineStringEndpoint {
     }
 }
 
-// Mock properties_match function for testing purposes
-// In a real implementation, this would parse the nested properties.properties
-fn properties_match(_props1: Option<&JsonValue>, _props2: Option<&JsonValue>) -> bool {
-    // This is a placeholder. Implement your actual property comparison logic here.
-    // For the current tests, this function is not called by the code being tested,
-    // but it's included as a reminder for the next steps.
-    true // Assume properties always match for this mock
+impl PointDistance for LineStringEndpoint {
+    fn distance_2(&self, point: &[f64; 2]) -> f64 {
+        let dx = self.point[0] - point[0];
+        let dy = self.point[1] - point[1];
+        dx * dx + dy * dy
+    }
+}
+#[allow(dead_code)]
+// Placeholder for the property matching logic
+// TODO: Implement the actual property comparison based on your data structure
+fn properties_match(props1: Option<&JsonObject>, props2: Option<&JsonObject>) -> bool {
+    // Example placeholder logic: Check if both have properties and are not null
+    // You need to replace this with your specific comparison logic
+    // involving parsing the nested 'properties.properties' string.
+    match (props1, props2) {
+        (Some(v1), Some(v2)) => {
+            // --- Implement your detailed property comparison here ---
+            // This is where you'd parse the nested JSON strings and compare fields.
+            // For now, a simple placeholder comparison
+            v1 == v2 // This is likely NOT sufficient for your actual data
+            // Example:
+            // if let (Some(nested1), Some(nested2)) = (v1.get("properties"), v2.get("properties")) {
+            //     if let (Some(props_str1), Some(props_str2)) = (nested1.get("properties").and_then(|v| v.as_str()), nested2.get("properties").and_then(|v| v.as_str())) {
+            //         if let (Ok(parsed1), Ok(parsed2)) = (serde_json::from_str::<JsonValue>(props_str1), serde_json::from_str::<JsonValue>(props_str2)) {
+            //             // Compare fields like objectId, constructionType, etc. on parsed1 and parsed2
+            //             // Also compare top-level 'surface'
+            //             // return parsed1.get("objectId") == parsed2.get("objectId") && ...
+            //         }
+            //     }
+            // }
+            // false // Default to false if parsing or comparison fails
+        }
+        (None, None) => true, // Both have no properties, consider them a match? Adjust as needed.
+        _ => false,           // One has properties, the other doesn't
+    }
 }
 
+#[allow(dead_code)]
 pub fn concatenate_features(collection: &FeatureCollection) -> FeatureCollection {
     if collection.features.is_empty() {
-        // Correctly return an empty FeatureCollection based on the input structure
         return FeatureCollection {
-            bbox: collection.bbox.clone(), // Keep bbox if present
-            features: Vec::new(),          // Empty features vector
-            foreign_members: collection.foreign_members.clone(), // Keep foreign_members
+            bbox: collection.bbox.clone(),
+            features: Vec::new(),
+            foreign_members: collection.foreign_members.clone(),
         };
     }
 
-    // Vector to hold only the LineString features
     let mut line_strings: Vec<Feature> = Vec::new();
-    // Vector to hold non-LineString features
     let mut other_features: Vec<Feature> = Vec::new();
 
-    // Build the list of LineString features and other features
+    // Filter LineStrings and other features
     for feature in &collection.features {
         if let Some(geometry) = &feature.geometry {
             if let Value::LineString(coords) = &geometry.value {
-                // Ensure line has at least 2 points
                 if coords.len() >= 2 {
                     line_strings.push(feature.clone());
                 } else {
-                    // Handle degenerate LineStrings by treating them as other_features
                     other_features.push(feature.clone());
                 }
             } else {
                 other_features.push(feature.clone());
             }
         } else {
-            // Features with no geometry also go to other_features
             other_features.push(feature.clone());
         }
     }
 
-    // Now we have `line_strings` containing only valid LineStrings
+    // If no LineStrings, just return other features
+    if line_strings.is_empty() {
+        return FeatureCollection {
+            bbox: collection.bbox.clone(),
+            features: other_features,
+            foreign_members: collection.foreign_members.clone(),
+        };
+    }
 
     // Create the R-tree
     let mut tree: RTree<LineStringEndpoint> = RTree::new();
 
-    // Create the status tracker for original LineString features
-    // This vector's length should match the number of valid LineStrings found
-    let mut is_merged: Vec<bool> = vec![false; line_strings.len()];
-
-    // Populate the R-tree with endpoints of the LineString features
+    // Populate the R-tree
     for (index, feature) in line_strings.iter().enumerate() {
         if let Some(Value::LineString(coords)) = &feature.geometry.as_ref().map(|g| &g.value) {
-            let start_coord = &coords[0]; // coords is Vec<Vec<f64>>, coords[0] is Vec<f64>
+            let start_coord = &coords[0];
             let end_coord = &coords[coords.len() - 1];
 
-            // Convert Vec<f64> to [f64; 2] for R-tree point
-            // Added error handling in case the inner Vec<f64> is not length 2
             if let (Ok(start_point), Ok(end_point)) =
                 (start_coord.clone().try_into(), end_coord.clone().try_into())
             {
@@ -98,41 +119,224 @@ pub fn concatenate_features(collection: &FeatureCollection) -> FeatureCollection
                     is_start: false,
                 });
             } else {
-                // This case should ideally not happen with valid GeoJSON LineStrings,
-                // but it's good practice to handle it.
                 eprintln!(
                     "Warning: Coordinate in LineString not in [x, y] format for feature index {}",
                     index
                 );
-                // Decide how to handle this - maybe skip this feature or add to other_features
-                // For now, we just print a warning and continue. The feature is already in line_strings.
             }
         }
     }
 
-    // Now we have the R-tree built with endpoints of the LineString features
-    // and the status tracker initialized.
-    // --- The next steps would be the iterative merging loop using the R-tree ---
-    
-    // Placeholder for the rest of the function that performs the merging
-    println!("R-tree built with {} points", tree.size());
-    println!("Found {} valid LineStrings", line_strings.len());
-    println!(
-        "Found {} other features (including degenerate LineStrings)",
-        other_features.len()
-    );
-    println!("is_merged vector initialized with size {}", is_merged.len());
+    // Status tracker for original LineString features
+    let mut is_merged: Vec<bool> = vec![false; line_strings.len()];
 
-    // For now, just return the other features, as the merging logic is not implemented yet
-    // In the final version, this would include the merged LineStrings as well.
-    // We will return a FeatureCollection containing the original LineStrings
-    // and other features for testing purposes, as the merging isn't done yet.
-    let mut result_features = line_strings; // Start with the filtered LineStrings
-    result_features.extend(other_features); // Add the other features
+    // Vector to store the final merged (or unmerged) LineString features
+    let mut merged_line_strings: Vec<Feature> = Vec::new();
 
+    // Define the distance threshold for merging
+    const MERGE_DISTANCE_THRESHOLD: f64 = 0.1; // meters
+
+    // --- Iterative Merging Loop ---
+    for i in 0..line_strings.len() {
+        // If this original feature has already been merged into another line, skip it
+        if is_merged[i] {
+            continue;
+        }
+
+        // This feature starts a new merged line
+        is_merged[i] = true;
+
+        // Get the initial coordinates and properties for the line being built
+        let initial_coords = match line_strings[i]
+            .geometry
+            .as_ref()
+            .and_then(|g| match &g.value {
+                Value::LineString(coords) => Some(coords.clone()),
+                _ => None,
+            }) {
+            Some(coords) => coords,
+            None => {
+                // This should not happen due to filtering, but handle defensively
+                eprintln!(
+                    "Error: Feature {} unexpectedly not a LineString during merging.",
+                    i
+                );
+                continue; // Skip this feature
+            }
+        };
+        let initial_properties = line_strings[i].properties.clone(); // Properties for the final merged feature
+
+        // Use a mutable vector to build the coordinates of the current merged line
+        let mut current_merged_coords = initial_coords;
+
+        // Loop to repeatedly try extending the current line
+        'extend_loop: loop {
+            let mut extended_in_this_iteration = false;
+
+            // Get the current start and end points of the line being built
+            // These unwraps are safe because current_merged_coords starts with >= 2 points
+            let current_start_point: [f64; 2] = current_merged_coords
+                .first()
+                .unwrap()
+                .clone()
+                .try_into()
+                .unwrap();
+            let current_end_point: [f64; 2] = current_merged_coords
+                .last()
+                .unwrap()
+                .clone()
+                .try_into()
+                .unwrap();
+
+            // --- Try extending from the current END point ---
+            // Query the R-tree for endpoints near the current end point
+            for endpoint_ref in
+                tree.locate_within_distance(current_end_point, MERGE_DISTANCE_THRESHOLD)
+            {
+                let j = endpoint_ref.feature_idx;
+
+                // Check if the original feature this endpoint belongs to is unmerged
+                // and if its properties match the initial feature of the current merged line
+                if !is_merged[j]
+                    && properties_match(
+                        initial_properties.as_ref(),
+                        line_strings[j].properties.as_ref(),
+                    )
+                {
+                    // Get the coordinates of the potential feature to merge
+                    if let Some(Value::LineString(potential_coords)) =
+                        &line_strings[j].geometry.as_ref().map(|g| &g.value)
+                    {
+                        // Check if this endpoint is the START of the potential feature
+                        if endpoint_ref.is_start {
+                            // Merge: Append potential_coords to current_merged_coords
+                            // Optional: Remove duplicate point if current_end_point == potential_coords[0]
+                            // TryInto::<[f64; 2]>::try_into(potential_coords.first().unwrap().clone())
+                            if let Ok(potential_start_point) = TryInto::<[f64; 2]>::try_into(
+                                potential_coords.first().unwrap().clone(),
+                            ) {
+                                if current_end_point == potential_start_point {
+                                    current_merged_coords.pop(); // Remove duplicate end point
+                                }
+                            }
+                            current_merged_coords.extend(potential_coords.clone());
+                        } else {
+                            // This endpoint is the END of the potential feature
+                            // Merge: Append potential_coords (reversed) to current_merged_coords
+                            // Optional: Remove duplicate point if current_end_point == potential_coords.last()
+                            if let Ok(potential_end_point) = TryInto::<[f64; 2]>::try_into(
+                                potential_coords.last().unwrap().clone(),
+                            ) {
+                                if current_end_point == potential_end_point {
+                                    current_merged_coords.pop(); // Remove duplicate end point
+                                }
+                            }
+                            current_merged_coords.extend(potential_coords.iter().rev().cloned());
+                        }
+
+                        // Mark the original feature as merged
+                        is_merged[j] = true;
+                        extended_in_this_iteration = true;
+                        // Break from processing query results for the current end point,
+                        // and try extending further from the new end point
+                        break;
+                    }
+                }
+            }
+
+            // If we extended from the end, continue the outer 'extend_loop' immediately
+            if extended_in_this_iteration {
+                continue 'extend_loop;
+            }
+
+            // --- Try extending from the current START point ---
+            // Query the R-tree for endpoints near the current start point
+            for endpoint_ref in
+                tree.locate_within_distance(current_start_point, MERGE_DISTANCE_THRESHOLD)
+            {
+                let j = endpoint_ref.feature_idx;
+
+                // Check if the original feature this endpoint belongs to is unmerged
+                // and if its properties match the initial feature of the current merged line
+                if !is_merged[j]
+                    && properties_match(
+                        initial_properties.as_ref(),
+                        line_strings[j].properties.as_ref(),
+                    )
+                {
+                    // Get the coordinates of the potential feature to merge
+                    if let Some(Value::LineString(potential_coords)) =
+                        &line_strings[j].geometry.as_ref().map(|g| &g.value)
+                    {
+                        // Check if this endpoint is the START of the potential feature
+                        if endpoint_ref.is_start {
+                            // Merge: Prepend potential_coords (reversed) to current_merged_coords
+                            // Optional: Remove duplicate point if current_start_point == potential_coords[0]
+                            if let Ok(potential_start_point) = TryInto::<[f64; 2]>::try_into(
+                                potential_coords.first().unwrap().clone(),
+                            ) {
+                                if current_start_point == potential_start_point {
+                                    current_merged_coords.remove(0); // Remove duplicate start point
+                                }
+                            }
+                            // Prepend reversed coordinates
+                            let mut reversed_potential_coords: Vec<Vec<f64>> =
+                                potential_coords.iter().rev().cloned().collect();
+                            reversed_potential_coords.extend(current_merged_coords);
+                            current_merged_coords = reversed_potential_coords;
+                        } else {
+                            // This endpoint is the END of the potential feature
+                            // Merge: Prepend potential_coords to current_merged_coords
+                            // Optional: Remove duplicate point if current_start_point == potential_coords.last()
+                            if let Ok(potential_end_point) = TryInto::<[f64; 2]>::try_into(
+                                potential_coords.last().unwrap().clone(),
+                            ) {
+                                if current_start_point == potential_end_point {
+                                    current_merged_coords.remove(0); // Remove duplicate start point
+                                }
+                            }
+                            let mut potential_coords_cloned = potential_coords.clone();
+                            potential_coords_cloned.extend(current_merged_coords);
+                            current_merged_coords = potential_coords_cloned;
+                        }
+
+                        // Mark the original feature as merged
+                        is_merged[j] = true;
+                        extended_in_this_iteration = true;
+                        // Break from processing query results for the current start point,
+                        // and try extending further from the new start point
+                        break;
+                    }
+                }
+            }
+
+            // If we didn't extend in this iteration (from either end), the line is complete
+            if !extended_in_this_iteration {
+                break 'extend_loop;
+            }
+        } // End of 'extend_loop'
+
+        // Create a new Feature for the completed merged line
+        let merged_feature = Feature {
+            bbox: None, // Bbox could be calculated for the new geometry if needed
+            geometry: Some(Geometry::new(Value::LineString(current_merged_coords))),
+            id: line_strings[i].id.clone(), // Keep the ID of the starting feature
+            properties: initial_properties, // Keep the properties of the starting feature
+            foreign_members: line_strings[i].foreign_members.clone(),
+        };
+
+        // Add the completed merged feature to the results
+        merged_line_strings.push(merged_feature);
+    } // End of outer loop iterating through original features
+
+    // Combine the merged LineStrings and the other features
+    let mut final_features = merged_line_strings;
+    final_features.extend(other_features);
+
+    // Return the final FeatureCollection
     FeatureCollection {
-        bbox: collection.bbox.clone(),
-        features: result_features, // Return all features, separated by type
+        bbox: collection.bbox.clone(), // Could calculate a new bbox if needed
+        features: final_features,
         foreign_members: collection.foreign_members.clone(),
     }
 }
@@ -141,6 +345,7 @@ pub fn concatenate_features(collection: &FeatureCollection) -> FeatureCollection
 #[cfg(test)]
 mod tests {
     use super::*; // Import items from the outer scope
+    use geojson::JsonValue;
 
     // Helper function to create a simple LineString feature
     fn create_line_string_feature(
