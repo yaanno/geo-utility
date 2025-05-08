@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // generate_deterministic_collection_data()?;
     // generate_synthetic_data()?;
     // generate_synthetic_collection_data()?;
-    generate_deterministic_data_concatenate_seeded()?;
+    generate_deterministic_data_concatenate()?;
     Ok(())
 }
 
@@ -127,10 +127,10 @@ fn generate_deterministic_collection_data() -> Result<(), Box<dyn std::error::Er
 
 #[allow(dead_code)]
 fn generate_deterministic_data_concatenate() -> Result<(), Box<dyn std::error::Error>> {
-    let num_features = 100000;
-    let max_vertices_per_feature = 50;
+    let num_features = 100;
+    let max_vertices_per_feature = 2;
     let bend_frequency = 0.1;
-    let max_bend_angle = 45.0;
+    let max_bend_angle = 10.0;
 
     println!("Generating {} features...", num_features);
     let feature_collection = generate_synthetic_data_collection(

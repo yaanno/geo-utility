@@ -1,6 +1,7 @@
 use geojson::{Feature, FeatureCollection, Geometry, JsonObject, Value};
 use rstar::{PointDistance, RTree, RTreeObject};
 use std::convert::TryInto;
+use std::collections::VecDeque;
 
 // Define the struct to be stored in the R-tree
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -167,7 +168,9 @@ pub fn concatenate_features(collection: &FeatureCollection) -> FeatureCollection
         let initial_properties = line_strings[i].properties.clone(); // Properties for the final merged feature
 
         // Use a mutable vector to build the coordinates of the current merged line
-        let mut current_merged_coords = initial_coords;
+        let mut current_merged_coords: VecDeque<[f64; 2]> = initial_coords.into_iter()
+            .map(|c| c.try_into().expect("Coordinate should be [f64; 2]"))
+            .collect();
 
         // Loop to repeatedly try extending the current line
         'extend_loop: loop {
@@ -175,18 +178,8 @@ pub fn concatenate_features(collection: &FeatureCollection) -> FeatureCollection
 
             // Get the current start and end points of the line being built
             // These unwraps are safe because current_merged_coords starts with >= 2 points
-            let current_start_point: [f64; 2] = current_merged_coords
-                .first()
-                .unwrap()
-                .clone()
-                .try_into()
-                .unwrap();
-            let current_end_point: [f64; 2] = current_merged_coords
-                .last()
-                .unwrap()
-                .clone()
-                .try_into()
-                .unwrap();
+            let current_start_point: [f64; 2] = *current_merged_coords.front().unwrap();
+            let current_end_point: [f64; 2] = *current_merged_coords.back().unwrap();
 
             // --- Try extending from the current END point ---
             // Query the R-tree for endpoints near the current end point
@@ -207,31 +200,29 @@ pub fn concatenate_features(collection: &FeatureCollection) -> FeatureCollection
                     if let Some(Value::LineString(potential_coords)) =
                         &line_strings[j].geometry.as_ref().map(|g| &g.value)
                     {
+                        let potential_points: Vec<[f64; 2]> = potential_coords.iter()
+                            .map(|c| c.clone().try_into().expect("Coordinate should be [f64; 2]"))
+                            .collect();
                         // Check if this endpoint is the START of the potential feature
                         if endpoint_ref.is_start {
                             // Merge: Append potential_coords to current_merged_coords
                             // Optional: Remove duplicate point if current_end_point == potential_coords[0]
-                            // TryInto::<[f64; 2]>::try_into(potential_coords.first().unwrap().clone())
-                            if let Ok(potential_start_point) = TryInto::<[f64; 2]>::try_into(
-                                potential_coords.first().unwrap().clone(),
-                            ) {
-                                if current_end_point == potential_start_point {
-                                    current_merged_coords.pop(); // Remove duplicate end point
+                            if let Some(potential_start_point) = potential_points.first() {
+                                if current_end_point == *potential_start_point {
+                                    current_merged_coords.pop_back(); // Remove duplicate end point
                                 }
                             }
-                            current_merged_coords.extend(potential_coords.clone());
+                             current_merged_coords.extend(potential_points);
                         } else {
                             // This endpoint is the END of the potential feature
                             // Merge: Append potential_coords (reversed) to current_merged_coords
                             // Optional: Remove duplicate point if current_end_point == potential_coords.last()
-                            if let Ok(potential_end_point) = TryInto::<[f64; 2]>::try_into(
-                                potential_coords.last().unwrap().clone(),
-                            ) {
-                                if current_end_point == potential_end_point {
-                                    current_merged_coords.pop(); // Remove duplicate end point
+                            if let Some(potential_end_point) = potential_points.last() {
+                                if current_end_point == *potential_end_point {
+                                    current_merged_coords.pop_back(); // Remove duplicate end point
                                 }
                             }
-                            current_merged_coords.extend(potential_coords.iter().rev().cloned());
+                            current_merged_coords.extend(potential_points.into_iter().rev());
                         }
 
                         // Mark the original feature as merged
@@ -268,36 +259,35 @@ pub fn concatenate_features(collection: &FeatureCollection) -> FeatureCollection
                     if let Some(Value::LineString(potential_coords)) =
                         &line_strings[j].geometry.as_ref().map(|g| &g.value)
                     {
+                        let potential_points: Vec<[f64; 2]> = potential_coords.iter()
+                             .map(|c| c.clone().try_into().expect("Coordinate should be [f64; 2]"))
+                             .collect();
+                        
                         // Check if this endpoint is the START of the potential feature
                         if endpoint_ref.is_start {
                             // Merge: Prepend potential_coords (reversed) to current_merged_coords
                             // Optional: Remove duplicate point if current_start_point == potential_coords[0]
-                            if let Ok(potential_start_point) = TryInto::<[f64; 2]>::try_into(
-                                potential_coords.first().unwrap().clone(),
-                            ) {
-                                if current_start_point == potential_start_point {
-                                    current_merged_coords.remove(0); // Remove duplicate start point
+                            if let Some(potential_start_point) = potential_points.first() {
+                                if current_start_point == *potential_start_point {
+                                    current_merged_coords.pop_front(); // Remove duplicate start point
                                 }
                             }
-                            // Prepend reversed coordinates
-                            let mut reversed_potential_coords: Vec<Vec<f64>> =
-                                potential_coords.iter().rev().cloned().collect();
-                            reversed_potential_coords.extend(current_merged_coords);
-                            current_merged_coords = reversed_potential_coords;
-                        } else {
+                            for point in potential_points.into_iter().rev() {
+                                current_merged_coords.push_front(point);
+                            }
+                        } else { 
                             // This endpoint is the END of the potential feature
-                            // Merge: Prepend potential_coords to current_merged_coords
-                            // Optional: Remove duplicate point if current_start_point == potential_coords.last()
-                            if let Ok(potential_end_point) = TryInto::<[f64; 2]>::try_into(
-                                potential_coords.last().unwrap().clone(),
-                            ) {
-                                if current_start_point == potential_end_point {
-                                    current_merged_coords.remove(0); // Remove duplicate start point
+                            // Merge: Prepend potential_points to current_merged_coords
+                            // Optional: Remove duplicate point if current_start_point == potential_points.last()
+                            if let Some(potential_end_point) = potential_points.last() {
+                                if current_start_point == *potential_end_point {
+                                    current_merged_coords.pop_front(); // Remove duplicate start point
                                 }
                             }
-                            let mut potential_coords_cloned = potential_coords.clone();
-                            potential_coords_cloned.extend(current_merged_coords);
-                            current_merged_coords = potential_coords_cloned;
+                            // Prepend points
+                            for point in potential_points.into_iter().rev() { // Iterate in reverse to push_front in correct order
+                                current_merged_coords.push_front(point);
+                            }
                         }
 
                         // Mark the original feature as merged
@@ -315,11 +305,14 @@ pub fn concatenate_features(collection: &FeatureCollection) -> FeatureCollection
                 break 'extend_loop;
             }
         } // End of 'extend_loop'
-
+        // Convert the final VecDeque<[f64; 2]> back to Vec<Vec<f64>> for GeoJSON
+        let final_coords_vec: Vec<Vec<f64>> = current_merged_coords.into_iter()
+            .map(|arr| arr.to_vec())
+            .collect();
         // Create a new Feature for the completed merged line
         let merged_feature = Feature {
             bbox: None, // Bbox could be calculated for the new geometry if needed
-            geometry: Some(Geometry::new(Value::LineString(current_merged_coords))),
+            geometry: Some(Geometry::new(Value::LineString(final_coords_vec))),
             id: line_strings[i].id.clone(), // Keep the ID of the starting feature
             properties: initial_properties, // Keep the properties of the starting feature
             foreign_members: line_strings[i].foreign_members.clone(),
