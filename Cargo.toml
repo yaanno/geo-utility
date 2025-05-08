@@ -60,5 +60,15 @@ name = "simple_bench"
 path = "benches/simple_bench.rs"
 harness = false
 
+[[bench]]
+name = "concatenate_features_bench"
+path = "benches/concatenate_features_bench.rs"
+harness = false
+
+[[bench]]
+name = "concatenate_features_bench_seeded"
+path = "benches/concatenate_features_bench_seeded.rs"
+harness = false
+
 [profile.bench]
 debug = true

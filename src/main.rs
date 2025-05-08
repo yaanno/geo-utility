@@ -2,9 +2,11 @@ use std::fs::File;
 use std::io::Write;
 
 use geo_utility::generation::complex::generate_synthetic_complex_featurecollection;
+use geo_utility::generation::deterministic_data_concatenate::generate_synthetic_data_collection;
 use geo_utility::generation::deterministic_feature_collection::generate_deterministic_feature_collection;
 use geo_utility::generation::featurecollection::generate_synthetic_featurecollection;
 use geo_utility::generation::linestrings::generate_synthetic_linestrings;
+use geo_utility::generation::deterministic_data_concatenate_seeded::generate_synthetic_data_concatenate_seeded;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // generate_synthetic_collection_data()?;
@@ -13,7 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // generate_deterministic_collection_data()?;
     // generate_deterministic_collection_data()?;
     // generate_synthetic_data()?;
-    generate_synthetic_collection_data()?;
+    // generate_synthetic_collection_data()?;
+    generate_deterministic_data_concatenate_seeded()?;
     Ok(())
 }
 
@@ -122,3 +125,60 @@ fn generate_deterministic_collection_data() -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
+#[allow(dead_code)]
+fn generate_deterministic_data_concatenate() -> Result<(), Box<dyn std::error::Error>> {
+    let num_features = 100000;
+    let max_vertices_per_feature = 50;
+    let bend_frequency = 0.1;
+    let max_bend_angle = 45.0;
+
+    println!("Generating {} features...", num_features);
+    let feature_collection = generate_synthetic_data_collection(
+        num_features,
+        max_vertices_per_feature,
+        bend_frequency,
+        max_bend_angle,
+    );
+    println!("Generation complete. Serializing to JSON...");
+
+    let geojson_string = serde_json::to_string(&feature_collection)?;
+
+    let file_path = format!(
+        "deterministic_data_concat_featurecollection_{}k_features.geojson",
+        num_features / 1000
+    );
+    let mut file = File::create(&file_path)?;
+    file.write_all(geojson_string.as_bytes())?;
+
+    println!("Data saved to {}", file_path);
+
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn generate_deterministic_data_concatenate_seeded() -> Result<(), Box<dyn std::error::Error>> {
+    let num_features = 100;
+    let close_pairs_ratio = 0.3;
+    let seed = 12345;
+
+    println!("Generating {} features...", num_features);
+    let feature_collection = generate_synthetic_data_concatenate_seeded(
+        num_features,
+        close_pairs_ratio,
+        seed,
+    );
+    println!("Generation complete. Serializing to JSON...");
+
+    let geojson_string = serde_json::to_string(&feature_collection)?;
+
+    let file_path = format!(
+        "deterministic_data_concat_seeded_featurecollection_{}k_features.geojson",
+        num_features / 1000
+    );
+    let mut file = File::create(&file_path)?;
+    file.write_all(geojson_string.as_bytes())?;
+
+    println!("Data saved to {}", file_path);
+
+    Ok(())
+}
