@@ -10,8 +10,8 @@ pub fn concat_and_scale(
     scale_factor: f64,
 ) -> FeatureCollection {
     let concatenated_features = concatenate_features(featurecollection);
-    let scaled_features = scale_buildings(&concatenated_features, scale_factor);
-    scaled_features
+    let scaled_features = scale_buildings(&concatenated_features.into() , scale_factor);
+    scaled_features.into()
 }
 
 fn load_features_from_file(file_path: &str) -> geojson::FeatureCollection {

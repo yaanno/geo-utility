@@ -90,7 +90,7 @@ pub enum GeoGeometry {
 }
 
 /// Struct to hold a feature's data with geo geometry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GeoFeature {
     pub id: Option<Id>,
     pub properties: Option<Map<String, JsonValue>>,
@@ -100,11 +100,21 @@ pub struct GeoFeature {
 }
 
 /// Struct to hold the collection of intermediate features
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GeoFeatureCollection {
     pub bbox: Option<Bbox>,
     pub foreign_members: Option<Map<String, JsonValue>>,
     pub features: Vec<GeoFeature>,
+}
+
+impl Default for GeoFeatureCollection {
+    fn default() -> Self {
+        GeoFeatureCollection {
+            bbox: None,
+            foreign_members: None,
+            features: Vec::new(),
+        }
+    }
 }
 
 /// Convert a geojson Geometry to a GeoGeometry

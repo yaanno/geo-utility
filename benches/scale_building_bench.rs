@@ -26,7 +26,7 @@ fn bench_100_features(c: &mut Criterion) {
                 features_100.clone() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data, scale_factor);
+                let results = scale_buildings(&input_data.into(), scale_factor);
                 black_box(results);
             }
         )
@@ -45,7 +45,7 @@ fn bench_1k_features(c: &mut Criterion) {
                 features_1k.clone() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data, scale_factor);
+                let results = scale_buildings(&input_data.into(), scale_factor);
                 black_box(results);
             }
         )
@@ -64,7 +64,7 @@ fn bench_10k_features(c: &mut Criterion) {
                 features_10k.clone() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data, scale_factor);
+                let results = scale_buildings(&input_data.into(), scale_factor);
                 black_box(results);
             }
         )
@@ -83,7 +83,7 @@ fn bench_100k_features(c: &mut Criterion) {
                 features_100k.clone() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data, scale_factor);
+                let results = scale_buildings(&input_data.into(), scale_factor);
                 black_box(results);
             }
         )
@@ -102,7 +102,7 @@ fn bench_1000k_features(c: &mut Criterion) {
                 features_1m.clone() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data, scale_factor);
+                let results = scale_buildings(&input_data.into(), scale_factor);
                 black_box(results);
             }
         )
@@ -121,7 +121,7 @@ fn bench_10_000k_features(c: &mut Criterion) {
                 features_1m.clone() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data, scale_factor);
+                let results = scale_buildings(&input_data.into(), scale_factor);
                 black_box(results);
             }
         )

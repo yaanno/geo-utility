@@ -1,11 +1,12 @@
 use geo::algorithm::line_measures::metric_spaces::Euclidean;
-use geo::{Coord, CoordsIter, Distance, LineString, LineStringSegmentize, Point};
-use geojson::{Feature, Value};
-use serde_json::Value as SerdeValue; // To handle properties
+use geo::{CoordsIter, Distance, LineString, LineStringSegmentize, Point};
+use serde_json::Value as SerdeValue;
+
+use crate::utils::geometry::{GeoFeature, GeoGeometry}; // To handle properties
 
 // This function will generate new LineStrings based on segment endpoints
 pub fn extend_features(
-    features: Vec<Feature>,
+    features: Vec<GeoFeature>,
     segment_length: usize,   // The maximum length of the segments
     extension_distance: f64, // The distance to extend the lines
 ) -> Vec<(LineString<f64>, Option<SerdeValue>)> // Return generated geometry and original properties
@@ -15,8 +16,8 @@ pub fn extend_features(
 
     for feature in &features {
         if let Some(geometry) = &feature.geometry {
-            match &geometry.value {
-                Value::LineString(line_coords) => {
+            match &geometry {
+                GeoGeometry::LineString(line_coords) => {
                     // Filter out "Gebäudekante"
                     let is_gebaeudekante = feature
                         .properties
@@ -35,10 +36,7 @@ pub fn extend_features(
                     // Convert to geo::LineString
                     let original_line_string: LineString<f64> = line_coords
                         .into_iter()
-                        .map(|coord| Coord {
-                            x: coord[0],
-                            y: coord[1],
-                        })
+                        .map(|coord| Point::new(coord.x, coord.y))
                         .collect();
 
                     // Segmentize the line string
@@ -132,28 +130,28 @@ pub fn extend_features(
 
                                 // --- Build the generated LineStrings for this point ---
                                 // Each pair of points forms a line segment
-                                let mut generated_segments_coords: Vec<Coord<f64>> =
+                                let mut generated_segments_coords: Vec<Point<f64>> =
                                     Vec::with_capacity(8);
 
                                 // 1. Segment: current_point -> extended_forward
-                                generated_segments_coords.push(current_point.into());
-                                generated_segments_coords.push(extended_forward.into());
+                                generated_segments_coords.push(current_point);
+                                generated_segments_coords.push(extended_forward);
 
                                 // 2. Segment: current_point -> extended_backward
-                                generated_segments_coords.push(current_point.into());
-                                generated_segments_coords.push(extended_backward.into());
+                                generated_segments_coords.push(current_point);
+                                generated_segments_coords.push(extended_backward);
 
                                 // 3. Segment: current_point -> extended_orthogonal_90
-                                generated_segments_coords.push(current_point.into());
-                                generated_segments_coords.push(extended_orthogonal_90.into());
+                                generated_segments_coords.push(current_point);
+                                generated_segments_coords.push(extended_orthogonal_90);
 
                                 // 4. Segment: current_point -> extended_orthogonal_minus_90
-                                generated_segments_coords.push(current_point.into());
-                                generated_segments_coords.push(extended_orthogonal_minus_90.into());
+                                generated_segments_coords.push(current_point);
+                                generated_segments_coords.push(extended_orthogonal_minus_90);
 
                                 // Create a single LineString containing all four segments from this point
                                 let generated_line_string =
-                                    LineString::new(generated_segments_coords);
+                                    LineString::from(generated_segments_coords);
 
                                 // --- Store the generated geometry and original properties ---
                                 // Store a clone of the original properties if they exist
@@ -185,7 +183,6 @@ pub fn extend_features(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use geojson::{Feature, Geometry, Value};
     use serde_json::json;
 
     #[test]
@@ -202,44 +199,38 @@ mod tests {
         properties_gebaeudekante.insert("properties".to_string(), prop_gebaeudekante);
 
         // Feature that should be processed - a line from (0,0) to (3,0)
-        let feature_process_horizontal = Feature {
+        let feature_process_horizontal = GeoFeature {
             bbox: None,
-            geometry: Some(Geometry {
-                bbox: None,
-                foreign_members: None,
-                value: Value::LineString(vec![
-                    vec![0.0, 0.0],
-                    vec![1.0, 0.0],
-                    vec![2.0, 0.0],
-                    vec![3.0, 0.0],
-                ]),
-            }),
+            geometry: Some(GeoGeometry::LineString(vec![
+                Point::new(0.0, 0.0),
+                Point::new(1.0, 0.0),
+                Point::new(2.0, 0.0),
+                Point::new(3.0, 0.0),
+            ].into())),
             id: None,
             properties: Some(properties_test.clone()), // Clone for use in multiple features
             foreign_members: None,
         };
 
         // Feature that should be processed - a line from (0,0) to (1,1)
-        let feature_process_diagonal = Feature {
+        let feature_process_diagonal = GeoFeature {
             bbox: None,
-            geometry: Some(Geometry {
-                bbox: None,
-                foreign_members: None,
-                value: Value::LineString(vec![vec![0.0, 0.0], vec![1.0, 1.0]]), // Length is sqrt(2)
-            }),
+            geometry: Some(GeoGeometry::LineString(vec![
+                Point::new(0.0, 0.0),
+                Point::new(1.0, 1.0),
+            ].into())), // Length is sqrt(2)
             id: None,
             properties: Some(properties_test),
             foreign_members: None,
         };
 
         // Feature that should be skipped
-        let feature_skip = Feature {
+        let feature_skip = GeoFeature {
             bbox: None,
-            geometry: Some(Geometry {
-                bbox: None,
-                foreign_members: None,
-                value: Value::LineString(vec![vec![10.0, 10.0], vec![11.0, 11.0]]),
-            }),
+            geometry: Some(GeoGeometry::LineString(vec![
+                Point::new(10.0, 10.0),
+                Point::new(11.0, 11.0),
+            ].into())),
             id: None,
             properties: Some(properties_gebaeudekante),
             foreign_members: None,
