@@ -78,7 +78,7 @@ impl RTreeObject for RectangleWithId {
 }
 
 /// Enum to hold different types of geo geometry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum GeoGeometry {
     Point(Point<f64>),
     LineString(LineString<f64>),
