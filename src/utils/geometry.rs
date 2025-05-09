@@ -1,4 +1,4 @@
-use geo::Rect;
+use geo::{BoundingRect, Rect};
 use geo::{LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon};
 use geojson::{Bbox, feature::Id};
 use geojson::{Feature, FeatureCollection, Geometry, Value};
@@ -87,6 +87,20 @@ pub enum GeoGeometry {
     MultiLineString(MultiLineString<f64>),
     MultiPolygon(MultiPolygon<f64>),
     // GeometryCollection(GeometryCollection<f64>),
+}
+
+impl GeoGeometry {
+    pub fn bounding_rect(&self) -> Option<Rect<f64>> {
+        match self {
+            GeoGeometry::Point(point) => Some(point.bounding_rect()),
+            GeoGeometry::LineString(line_string) => line_string.bounding_rect(),
+            GeoGeometry::Polygon(polygon) => polygon.bounding_rect(),
+            GeoGeometry::MultiPoint(multi_point) => multi_point.bounding_rect(),
+            GeoGeometry::MultiLineString(multi_line_string) => multi_line_string.bounding_rect(),
+            GeoGeometry::MultiPolygon(multi_polygon) => multi_polygon.bounding_rect(),
+            // GeoGeometry::GeometryCollection(geometry_collection) => geometry_collection.bounding_rect(),
+        }
+    }
 }
 
 /// Struct to hold a feature's data with geo geometry

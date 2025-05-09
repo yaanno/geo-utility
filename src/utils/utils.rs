@@ -1,4 +1,4 @@
-use geo::{Contains, Coord, Point, Rect};
+use geo::{BoundingRect, Contains, Coord, LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon, Rect};
 
 pub const GERMANY_BBOX: [f64; 4] = [
     5.866211,  // Min longitude
@@ -40,6 +40,69 @@ pub trait BoundingBoxOps {
     /// # Returns
     /// A new extended bounding box
     fn extend(&self, cell_size: f64) -> Rect;
+}
+impl InBoundingBox for MultiLineString {
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool {
+        let rect = Rect::new(
+            Coord { x: bbox[0], y: bbox[1] },
+            Coord { x: bbox[2], y: bbox[3] },
+        );
+        self.iter().all(|ls| ls.coords().all(|coord| rect.contains(coord)))
+    }
+}
+
+impl InBoundingBox for Point {
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool {
+        let rect = Rect::new(
+            Coord { x: bbox[0], y: bbox[1] },
+            Coord { x: bbox[2], y: bbox[3] },
+        );
+        rect.contains(self)
+    }
+}
+
+impl InBoundingBox for MultiPoint {
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool {
+        let rect = Rect::new(
+            Coord { x: bbox[0], y: bbox[1] },
+            Coord { x: bbox[2], y: bbox[3] },
+        );
+        if let Some(bounding_rect) = self.bounding_rect() {
+            rect.contains(&bounding_rect)
+        } else {
+            false
+        }
+    }
+}
+
+impl InBoundingBox for LineString {
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool {
+        let rect = Rect::new(
+            Coord { x: bbox[0], y: bbox[1] },
+            Coord { x: bbox[2], y: bbox[3] },
+        );
+        self.coords().all(|coord| rect.contains(coord))
+    }
+}
+
+impl InBoundingBox for Polygon {
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool {
+        let rect = Rect::new(
+            Coord { x: bbox[0], y: bbox[1] },
+            Coord { x: bbox[2], y: bbox[3] },
+        );
+        self.exterior().coords().all(|coord| rect.contains(coord))
+    }
+}
+
+impl InBoundingBox for MultiPolygon {
+    fn in_bounding_box(&self, bbox: &[f64; 4]) -> bool {
+        let rect = Rect::new(
+            Coord { x: bbox[0], y: bbox[1] },
+            Coord { x: bbox[2], y: bbox[3] },
+        );
+        self.iter().all(|poly| poly.exterior().coords().all(|coord| rect.contains(coord)))
+    }
 }
 
 impl InBoundingBox for [f64; 2] {

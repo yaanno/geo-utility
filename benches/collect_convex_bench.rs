@@ -21,7 +21,7 @@ fn bench_100_features(c: &mut Criterion) {
     c.bench_function("collect_convex_boundingboxes_100_features", |b| {
         b.iter_with_setup(
             || {
-                features_100.clone() // Clone the data here
+                features_100.clone().into() // Clone the data here
             },
             |input_data| {
                 let results = collect_convex_boundingboxes(&input_data);
@@ -38,7 +38,7 @@ fn bench_1k_features(c: &mut Criterion) {
     c.bench_function("collect_convex_boundingboxes_1k_features", |b| {
         b.iter_with_setup(
             || {
-                features_1k.clone() // Clone the data here
+                features_1k.clone().into() // Clone the data here
             },
             |input_data| {
                 let results = collect_convex_boundingboxes(&input_data);
@@ -55,7 +55,7 @@ fn bench_10k_features(c: &mut Criterion) {
     c.bench_function("collect_convex_boundingboxes_10k_features", |b| {
         b.iter_with_setup(
             || {
-                features_10k.clone() // Clone the data here
+                features_10k.clone().into() // Clone the data here
             },
             |input_data| {
                 let results = collect_convex_boundingboxes(&input_data);
@@ -72,7 +72,7 @@ fn bench_100k_features(c: &mut Criterion) {
     c.bench_function("collect_convex_boundingboxes_100k_features", |b| {
         b.iter_with_setup(
             || {
-                features_100k.clone() // Clone the data here
+                features_100k.clone().into() // Clone the data here
             },
             |input_data| {
                 let results = collect_convex_boundingboxes(&input_data);
@@ -89,7 +89,7 @@ fn bench_1000k_features(c: &mut Criterion) {
     c.bench_function("collect_convex_boundingboxes_1000k_features", |b| {
         b.iter_with_setup(
             || {
-                features_1m.clone() // Clone the data here
+                features_1m.clone().into() // Clone the data here
             },
             |input_data| {
                 let results = collect_convex_boundingboxes(&input_data);

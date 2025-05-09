@@ -1,15 +1,14 @@
 // Collects convex bounding boxes from a geojson FeatureCollection.
 
+use crate::utils::error::Error;
 use geo::algorithm::convex_hull::ConvexHull;
 use geo::geometry::{LineString as GeoLineString, MultiPoint};
 use geo::{BoundingRect, Coord, Intersects, Point, Rect};
-use geojson::{FeatureCollection, Value, Feature};
 use ordered_float::OrderedFloat;
 use std::collections::HashSet;
-use crate::utils::error::Error;
 
-use crate::utils::utils::{InBoundingBox, GERMANY_BBOX};
-
+use crate::utils::geometry::{GeoFeature, GeoFeatureCollection, GeoGeometry};
+use crate::utils::utils::{GERMANY_BBOX, InBoundingBox};
 
 /// Creates a canonical representation of polygon points for hashing purposes.
 ///
@@ -54,10 +53,7 @@ fn canonical_hull_unique_sorted_points(
 /// # Returns
 /// `Some(geo::Polygon)` containing the generated hull or bounding box polygon
 /// if the feature meets the criteria, otherwise `None`.
-fn process_single_feature(
-    feature: &Feature,
-    germany_rect: &Rect,
-) -> Option<geo::Polygon> {
+fn process_single_feature(feature: &GeoFeature, germany_rect: &Rect) -> Option<geo::Polygon> {
     // --- Early Filtering using Feature Bounding Box ---
     // Check feature bbox intersection with Germany bbox
     if let Some(feature_bbox_value) = &feature.bbox {
@@ -81,7 +77,7 @@ fn process_single_feature(
 
     // --- Extract geometry and check location based on type ---
     let geometry_value = match feature.geometry.as_ref() {
-        Some(geometry) => &geometry.value,
+        Some(geometry) => geometry,
         None => {
             return None; // Skip features without geometry
         }
@@ -89,150 +85,123 @@ fn process_single_feature(
 
     let mut coords: Vec<Coord> = Vec::new();
     let mut all_points_in_germany = true;
-    let mut geometry_for_fallback_bbox: Option<geo::Geometry> = None; // Store geo::Geometry for fallback bbox calculation
+    let mut geometry_for_fallback_bbox: Option<GeoGeometry> = None; // Store geo::Geometry for fallback bbox calculation
 
     // Extract coordinates, check location, and prepare geo::Geometry for fallback
     match geometry_value {
-        Value::Point(coord) => {
-            let geo_coord = Coord {
-                x: coord[0],
-                y: coord[1],
-            };
-            if geo_coord.in_bounding_box(&GERMANY_BBOX) {
-                coords.push(geo_coord); // Use for unique count check
-                geometry_for_fallback_bbox = Some(geo::Geometry::Point(Point::from(geo_coord))); // Create geo::Point for bbox
+        GeoGeometry::Point(coord) => {
+            if coord.in_bounding_box(&GERMANY_BBOX) {
+                coords.push(Coord {
+                    x: coord.x(),
+                    y: coord.y(),
+                }); // Use for unique count check
+                geometry_for_fallback_bbox = Some(GeoGeometry::Point(Point::from(Coord {
+                    x: coord.x(),
+                    y: coord.y(),
+                })));
             } else {
                 all_points_in_germany = false;
             }
         }
-        Value::LineString(line_coords) => {
-            let line_coords_geo: Vec<Coord> = line_coords
-                .iter()
-                .map(|c| Coord { x: c[0], y: c[1] })
-                .collect();
-            if line_coords_geo
-                .iter()
-                .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-            {
+        GeoGeometry::LineString(line_coords) => {
+            if !line_coords.in_bounding_box(&GERMANY_BBOX) {
                 all_points_in_germany = false;
             } else {
-                coords.extend(line_coords_geo.clone()); // Use for unique count check
-                geometry_for_fallback_bbox = Some(geo::Geometry::LineString(GeoLineString::new(
-                    line_coords_geo,
-                ))); // Create geo::LineString for bbox
+                coords.extend(line_coords.coords().map(|c| Coord { x: c.x, y: c.y }).collect::<Vec<Coord>>()); // Use for unique count check
+                geometry_for_fallback_bbox = Some(GeoGeometry::LineString(line_coords.clone())); // Create geo::LineString for bbox
             }
         }
-        Value::Polygon(polygon_coords) => {
+        GeoGeometry::Polygon(polygon_coords) => {
             // Extract coords from exterior ring; interior rings don't affect convex hull
-            if let Some(exterior_ring_coords) = polygon_coords.first() {
-                let exterior_ring_geo_coords: Vec<Coord> = exterior_ring_coords
-                    .iter()
-                    .map(|c| Coord { x: c[0], y: c[1] })
-                    .collect();
-                if exterior_ring_geo_coords
-                    .iter()
-                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-                {
-                    all_points_in_germany = false;
-                } else {
-                    coords.extend(&exterior_ring_geo_coords); // Use for unique count check
-                    // Store the polygon geometry for potential fallback bbox if needed (though convex hull is primary for polygons)
-                    // Note: Constructing a full geo::Polygon from geojson Vec<Vec<Vec<f64>>> is more complex,
-                    // relying on extracted points for hull/bbox is simpler here.
-                    // If needing the full polygon for fallback, you'd parse the interior rings too.
-                    // Let's rely on extracted coords for unique count and hull/bbox.
-                    if !exterior_ring_geo_coords.is_empty() {
-                         // Note: BoundingRect on Polygon includes interior rings if they exist.
-                         // For simplicity and focus on convex hull/outer bbox, we use extracted coords.
-                         // If a precise Polygon BoundingRect was strictly needed for fallback, a full geo::Polygon parse would be required.
-                         // Let's use the extracted coords for unique_count and rely on the logic below.
-                         // If fallback is needed, and the geometry_for_fallback_bbox wasn't set (e.g., for Polygon/MultiPolygon),
-                         // we might fallback to using MultiPoint::from(coords).bounding_rect()
-                    } else {
-                         // Polygon has an empty exterior ring, treat as out of bounds or invalid for processing
-                         all_points_in_germany = false; // Effectively skips this feature
-                    }
-                }
+            if !polygon_coords.in_bounding_box(&GERMANY_BBOX) {
+                all_points_in_germany = false;
             } else {
-                // Polygon has no exterior ring, skip
-                return None;
+                let exterior_ring_geo_coords: Vec<Coord> = polygon_coords
+                    .exterior()
+                    .coords()
+                    .map(|c| Coord { x: c.x, y: c.y })
+                    .collect();
+
+                coords.extend(&exterior_ring_geo_coords); // Use for unique count check
+                // Store the polygon geometry for potential fallback bbox if needed (though convex hull is primary for polygons)
+                // Note: Constructing a full geo::Polygon from geojson Vec<Vec<Vec<f64>>> is more complex,
+                // relying on extracted points for hull/bbox is simpler here.
+                // If needing the full polygon for fallback, you'd parse the interior rings too.
+                // Let's rely on extracted coords for unique count and hull/bbox.
+                if !exterior_ring_geo_coords.is_empty() {
+                    // Note: BoundingRect on Polygon includes interior rings if they exist.
+                    // For simplicity and focus on convex hull/outer bbox, we use extracted coords.
+                    // If a precise Polygon BoundingRect was strictly needed for fallback, a full geo::Polygon parse would be required.
+                    // Let's use the extracted coords for unique_count and rely on the logic below.
+                    // If fallback is needed, and the geometry_for_fallback_bbox wasn't set (e.g., for Polygon/MultiPolygon),
+                    // we might fallback to using MultiPoint::from(coords).bounding_rect()
+                }
             }
         }
         // Add other geometry types here (MultiPoint, MultiLineString, MultiPolygon)
         // Extract their coordinates, check if in Germany, and if applicable,
         // create the corresponding geo::Geometry value for geometry_for_fallback_bbox.
-        Value::MultiPoint(point_coords_vec) => {
-            let multipoint_geo_coords: Vec<Coord> = point_coords_vec
-                .iter()
-                .map(|c| Coord { x: c[0], y: c[1] })
-                .collect();
-            if multipoint_geo_coords
-                .iter()
-                .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-            {
+        GeoGeometry::MultiPoint(point_coords_vec) => {
+            if !point_coords_vec.in_bounding_box(&GERMANY_BBOX) {
                 all_points_in_germany = false;
             } else {
-                coords.extend(multipoint_geo_coords.clone()); // Use for unique count check
-                if !multipoint_geo_coords.is_empty() {
-                    geometry_for_fallback_bbox = Some(geo::Geometry::MultiPoint(MultiPoint::new(
-                        multipoint_geo_coords.into_iter().map(Point::from).collect(),
+                let point_coords_vec_geo: Vec<Coord> = point_coords_vec
+                    .iter()
+                    .map(|c| Coord { x: c.x(), y: c.y() })
+                    .collect();
+
+                coords.extend(point_coords_vec_geo.clone()); // Use for unique count check
+                if !point_coords_vec_geo.is_empty() {
+                    geometry_for_fallback_bbox = Some(GeoGeometry::MultiPoint(MultiPoint::new(
+                        point_coords_vec_geo.into_iter().map(Point::from).collect(),
                     )));
                 }
             }
         }
-        Value::MultiLineString(multiline_coords_vec) => {
-            let multiline_geo_coords: Vec<Coord> = multiline_coords_vec
-                .iter()
-                .flatten()
-                .map(|c| Coord { x: c[0], y: c[1] })
-                .collect();
-            if multiline_geo_coords
-                .iter()
-                .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-            {
+        GeoGeometry::MultiLineString(multiline_coords_vec) => {
+            if !multiline_coords_vec.in_bounding_box(&GERMANY_BBOX) {
                 all_points_in_germany = false;
             } else {
-                coords.extend(multiline_geo_coords.clone()); // Use for unique count check
+                let multiline_coords_vec_geo: Vec<Coord> = multiline_coords_vec
+                    .iter()
+                    .map(|ls| ls.coords().map(|c| Coord { x: c.x, y: c.y }).collect::<Vec<Coord>>())
+                    .flatten()
+                    .collect();
+
+                coords.extend(multiline_coords_vec_geo.clone()); // Use for unique count check
                 // Creating a geo::MultiLineString from flattened coords is tricky,
                 // but we can use the flatten coords for convex hull/bbox.
                 // Or process each LineString in MultiLineString individually if preferred.
                 // For a simple bbox fallback, we can use the flattened coords.
-                 if !multiline_geo_coords.is_empty() {
-                     // Note: Using LineString for simplicity here, bbox is the same for flattened points
-                     geometry_for_fallback_bbox = Some(geo::Geometry::LineString(GeoLineString::new(
-                         multiline_geo_coords,
-                     )));
-                 }
+                if !multiline_coords_vec_geo.is_empty() {
+                    // Note: Using LineString for simplicity here, bbox is the same for flattened points
+                    geometry_for_fallback_bbox = Some(GeoGeometry::LineString(GeoLineString::new(
+                        multiline_coords_vec_geo,
+                    )));
+                }
             }
         }
-        Value::MultiPolygon(multipolygon_coords_vec) => {
-            let all_exterior_coords: Vec<Coord> = multipolygon_coords_vec
-                .iter()
-                .filter_map(|poly| poly.first()) // Get exterior rings
-                .flatten() // Flatten points from all exterior rings
-                .map(|c| Coord { x: c[0], y: c[1] })
-                .collect();
-
-            if all_exterior_coords
-                .iter()
-                .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-            {
+        GeoGeometry::MultiPolygon(multipolygon_coords_vec) => {
+            if !multipolygon_coords_vec.in_bounding_box(&GERMANY_BBOX) {
                 all_points_in_germany = false;
             } else {
+                let all_exterior_coords: Vec<Coord> = multipolygon_coords_vec
+                    .iter()
+                    .filter_map(|poly| Some(poly.exterior().coords())) // Get exterior rings
+                    .flatten() // Flatten points from all exterior rings
+                    .map(|c| Coord { x: c.x, y: c.y })
+                    .collect();
+
                 coords.extend(all_exterior_coords.clone()); // Use for unique count check
-                 if !all_exterior_coords.is_empty() {
-                      // For MultiPolygon, rely on extracted coords for unique count and hull/bbox
-                      // A full geo::MultiPolygon parse for geometry_for_fallback_bbox is complex.
-                      // We can fall back to using MultiPoint::from(coords).bounding_rect() if needed.
-                 } else {
-                      // MultiPolygon has no non-empty exterior rings
-                      all_points_in_germany = false; // Effectively skips this feature
-                 }
+                if !all_exterior_coords.is_empty() {
+                    // For MultiPolygon, rely on extracted coords for unique count and hull/bbox
+                    // A full geo::MultiPolygon parse for geometry_for_fallback_bbox is complex.
+                    // We can fall back to using MultiPoint::from(coords).bounding_rect() if needed.
+                } else {
+                    // MultiPolygon has no non-empty exterior rings
+                    all_points_in_germany = false; // Effectively skips this feature
+                }
             }
-        }
-        _ => {
-            // Skip unsupported geometry types
-            return None;
         }
     }
 
@@ -253,18 +222,20 @@ fn process_single_feature(
         // --- FALLBACK: Calculate bounding box and convert to polygon ---
         // Try to get bbox from geometry_for_fallback_bbox first
         let fallback_polygon = geometry_for_fallback_bbox
-             .as_ref()
-             .and_then(|geom| geom.bounding_rect())
-             .or_else(|| { // If geometry_for_fallback_bbox didn't yield a rect (e.g., complex types or empty coords)
-                  if !coords.is_empty() {
-                       // Fallback to computing bbox from collected coords
-                       let multi_point_from_coords = MultiPoint::new(coords.into_iter().map(Point::from).collect());
-                       multi_point_from_coords.bounding_rect()
-                  } else {
-                       None // No coords, no bbox
-                  }
-             })
-             .map(|rect| rect.to_polygon()); // Convert the Rect to a Polygon
+            .as_ref()
+            .and_then(|geom| geom.bounding_rect())
+            .or_else(|| {
+                // If geometry_for_fallback_bbox didn't yield a rect (e.g., complex types or empty coords)
+                if !coords.is_empty() {
+                    // Fallback to computing bbox from collected coords
+                    let multi_point_from_coords =
+                        MultiPoint::new(coords.into_iter().map(Point::from).collect());
+                    multi_point_from_coords.bounding_rect()
+                } else {
+                    None // No coords, no bbox
+                }
+            })
+            .map(|rect| rect.to_polygon()); // Convert the Rect to a Polygon
 
         fallback_polygon // Return the generated polygon or None
     } else {
@@ -285,9 +256,7 @@ fn process_single_feature(
 ///
 /// # Returns
 /// A new vector containing only the unique polygons.
-fn deduplicate_polygons(
-    hulls: Vec<geo::Polygon>
-) -> Vec<geo::Polygon> {
+fn deduplicate_polygons(hulls: Vec<geo::Polygon>) -> Vec<geo::Polygon> {
     let mut unique_hulls: Vec<geo::Polygon> = Vec::with_capacity(hulls.len());
     let mut seen_canonical_coords: HashSet<Vec<(OrderedFloat<f64>, OrderedFloat<f64>)>> =
         HashSet::with_capacity(hulls.len());
@@ -301,7 +270,6 @@ fn deduplicate_polygons(
     }
     unique_hulls
 }
-
 
 /// Collects convex bounding boxes and fallback bounding box polygons
 /// from a geojson FeatureCollection.
@@ -319,7 +287,7 @@ fn deduplicate_polygons(
 /// # Errors
 /// Returns an error if a critical internal processing issue occurs (less likely with current logic).
 pub fn collect_convex_boundingboxes(
-    featurecollection: &FeatureCollection,
+    featurecollection: &GeoFeatureCollection,
 ) -> Result<Vec<geo::Polygon>, Error> {
     let germany_rect: Rect = Rect::new(
         Coord {
@@ -350,7 +318,6 @@ pub fn collect_convex_boundingboxes(
     // Keeping Result<(), Error> signature for consistency if needed later.
     Ok(unique_hulls)
 }
-
 
 #[allow(unused_imports)]
 mod tests {
@@ -396,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_collect_convex_boundingboxes_empty_collection_produces_empty() {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
             features: vec![], // Empty features list
             foreign_members: None,
@@ -412,62 +379,52 @@ mod tests {
 
     #[test]
     fn test_collect_convex_boundingboxes_features_outside_germany_produce_empty() {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
             features: vec![
                 // Point outside Germany
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::Point(vec![0.0, 0.0]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::Point(Point::new(0.0, 0.0))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // LineString outside Germany
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![
-                            vec![0.0, 0.0],
-                            vec![1.0, 1.0],
-                            vec![0.0, 1.0],
-                        ]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::from(vec![
+                        Point::new(0.0, 0.0),
+                        Point::new(1.0, 1.0),
+                        Point::new(0.0, 1.0),
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // Polygon outside Germany
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::Polygon(vec![vec![
-                            vec![0.0, 0.0],
-                            vec![1.0, 0.0],
-                            vec![1.0, 1.0],
-                            vec![0.0, 0.0],
-                        ]]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::Polygon(Polygon::new(
+                        LineString::from(vec![
+                            Point::new(0.0, 0.0),
+                            Point::new(1.0, 0.0),
+                            Point::new(1.0, 1.0),
+                            Point::new(0.0, 0.0),
+                        ]),
+                        vec![],
+                    ))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // MultiPoint outside Germany
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::MultiPoint(vec![vec![0.0, 0.0], vec![1.0, 1.0]]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::MultiPoint(MultiPoint::from(vec![
+                        Point::new(0.0, 0.0),
+                        Point::new(1.0, 1.0),
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
@@ -486,69 +443,61 @@ mod tests {
 
     #[test]
     fn test_collect_convex_boundingboxes_features_with_insufficient_points_produce_bboxes() {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
             features: vec![
                 // Point in Germany (1 point -> bounding box)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::Point(vec![10.0, 50.0]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::Point(Point::new(10.0, 50.0))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // LineString in Germany (2 points -> bounding box)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![vec![10.0, 50.0], vec![11.0, 51.0]]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(11.0, 51.0),
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // LineString in Germany (2 identical points -> should be skipped)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![vec![10.0, 50.0], vec![10.0, 50.0]]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(10.0, 50.0),
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // MultiPoint in Germany (2 points -> bounding box)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::MultiPoint(vec![vec![10.0, 50.0], vec![11.0, 51.0]]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::MultiPoint(MultiPoint::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(11.0, 51.0),
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // Polygon in Germany with only 2 unique points (invalid geojson, should produce bounding box)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::Polygon(vec![vec![
-                            vec![10.0, 50.0],
-                            vec![11.0, 51.0],
-                            vec![10.0, 50.0],
-                        ]]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::Polygon(Polygon::new(
+                        LineString::from(vec![
+                            Point::new(10.0, 50.0),
+                            Point::new(11.0, 51.0),
+                            Point::new(10.0, 50.0),
+                        ]),
+                        vec![],
+                    ))),
                     id: None,
                     properties: None,
                     foreign_members: None,
@@ -574,33 +523,25 @@ mod tests {
     #[test]
     fn test_collect_convex_boundingboxes_unsupported_geometry_types_produce_empty_or_correct_subset()
      {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
             features: vec![
                 // Unsupported type (e.g., GeometryCollection)
-                Feature {
-                    bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::GeometryCollection(vec![]),
-                        foreign_members: None,
-                    }),
-                    id: None,
-                    properties: None,
-                    foreign_members: None,
-                },
+                // GeoFeature {
+                //     bbox: None,
+                //     geometry: Some(GeoGeometry::GeometryCollection(vec![])),
+                //     id: None,
+                //     properties: None,
+                //     foreign_members: None,
+                // },
                 // A valid feature that should be processed
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![
-                            vec![10.0, 50.0],
-                            vec![11.0, 50.0],
-                            vec![10.5, 51.0],
-                        ]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(11.0, 50.0),
+                        Point::new(10.5, 51.0),
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
@@ -620,34 +561,32 @@ mod tests {
 
     #[test]
     fn test_collect_convex_boundingboxes_features_partly_outside_germany_produce_empty() {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
             features: vec![
                 // LineString crossing border
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![vec![10.0, 50.0], vec![16.0, 50.0]]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(16.0, 50.0),
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 }, // 10,50 inside, 16,50 outside
                 // Polygon crossing border
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::Polygon(vec![vec![
-                            vec![10.0, 50.0],
-                            vec![16.0, 50.0],
-                            vec![16.0, 51.0],
-                            vec![10.0, 50.0],
-                        ]]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::Polygon(Polygon::new(
+                        LineString::from(vec![
+                            Point::new(10.0, 50.0),
+                            Point::new(16.0, 50.0),
+                            Point::new(16.0, 51.0),
+                            Point::new(10.0, 50.0),
+                        ]),
+                        vec![],
+                    ))),
                     id: None,
                     properties: None,
                     foreign_members: None,
@@ -668,19 +607,45 @@ mod tests {
 
     #[test]
     fn test_collect_convex_boundingboxes_single_linestring_in_germany_produces_one_hull() {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
-            features: vec![Feature {
+            features: vec![GeoFeature {
                 bbox: None,
-                geometry: Some(geojson::Geometry {
-                    bbox: None,
-                    value: Value::LineString(vec![
-                        vec![10.0, 50.0],
-                        vec![11.0, 50.0],
-                        vec![10.5, 51.0],
-                    ]), // 3 points forming a triangle in Germany
-                    foreign_members: None,
-                }),
+                geometry: Some(GeoGeometry::LineString(LineString::from(vec![
+                    Point::new(10.0, 50.0),
+                    Point::new(11.0, 50.0),
+                    Point::new(10.5, 51.0),
+                ]))),
+                id: None,
+                properties: None,
+                foreign_members: None,
+            }],
+            foreign_members: None,
+        };
+        let result = collect_convex_boundingboxes(&featurecollection);
+        assert!(result.is_ok());
+        let hulls = result.unwrap();
+        assert_eq!(
+            hulls.len(),
+            1,
+            "Expected one hull from a valid LineString in Germany"
+        );
+    }
+
+    #[test]
+    fn test_collect_convex_boundingboxes_single_polygon_in_germany_produces_one_hull() {
+        let featurecollection = GeoFeatureCollection {
+            bbox: None,
+            features: vec![GeoFeature {
+                bbox: None,
+                geometry: Some(GeoGeometry::Polygon(Polygon::new(
+                    LineString::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(11.0, 50.0),
+                        Point::new(10.5, 51.0),
+                    ]),
+                    vec![],
+                ))),
                 id: None,
                 properties: None,
                 foreign_members: None,
@@ -712,22 +677,21 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_convex_boundingboxes_single_polygon_in_germany_produces_one_hull() {
-        let featurecollection = FeatureCollection {
+    fn test_collect_convex_boundingboxes_single_polygon_in_germany_produces_one_hull_2() {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
-            features: vec![Feature {
+            features: vec![GeoFeature {
                 bbox: None,
-                geometry: Some(geojson::Geometry {
-                    bbox: None,
-                    value: Value::Polygon(vec![vec![
-                        vec![10.0, 50.0],
-                        vec![11.0, 50.0],
-                        vec![11.0, 51.0],
-                        vec![10.0, 51.0],
-                        vec![10.0, 50.0],
-                    ]]), // Square in Germany
-                    foreign_members: None,
-                }),
+                geometry: Some(GeoGeometry::Polygon(Polygon::new(
+                    LineString::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(11.0, 50.0),
+                        Point::new(11.0, 51.0),
+                        Point::new(10.0, 51.0),
+                        Point::new(10.0, 50.0),
+                    ]),
+                    vec![],
+                ))),
                 id: None,
                 properties: None,
                 foreign_members: None,
@@ -740,7 +704,7 @@ mod tests {
         assert_eq!(
             hulls.len(),
             1,
-            "Expected one hull from a valid Polygon in Germany"
+            "Expected one hull from a valid LineString in Germany"
         );
 
         // Check the vertices of the resulting hull (should be the square itself as it's convex)
@@ -760,20 +724,16 @@ mod tests {
 
     #[test]
     fn test_collect_convex_boundingboxes_single_multipoint_in_germany_produces_one_hull() {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
-            features: vec![Feature {
+            features: vec![GeoFeature {
                 bbox: None,
-                geometry: Some(geojson::Geometry {
-                    bbox: None,
-                    value: Value::MultiPoint(vec![
-                        vec![10.0, 50.0],
-                        vec![11.0, 50.0],
-                        vec![10.5, 51.0],
-                        vec![10.5, 50.5],
-                    ]), // 4 points in Germany
-                    foreign_members: None,
-                }),
+                geometry: Some(GeoGeometry::MultiPoint(MultiPoint::from(vec![
+                    Point::new(10.0, 50.0),
+                    Point::new(11.0, 50.0),
+                    Point::new(10.5, 51.0),
+                    Point::new(10.5, 50.5),
+                ]))), // 4 points in Germany
                 id: None,
                 properties: None,
                 foreign_members: None,
@@ -808,56 +768,44 @@ mod tests {
 
     #[test]
     fn test_collect_convex_boundingboxes_duplicate_linestrings_in_germany_produce_one_hull() {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
             features: vec![
                 // Feature 1
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![
-                            vec![10.0, 50.0],
-                            vec![11.0, 50.0],
-                            vec![10.5, 51.0],
-                            vec![10.0, 50.0], // 3 points for hull (closed triangle)
-                        ]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(11.0, 50.0),
+                        Point::new(10.5, 51.0),
+                        Point::new(10.0, 50.0), // 3 points for hull (closed triangle)
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // Feature 2 (identical geometry value)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![
-                            vec![10.0, 50.0],
-                            vec![11.0, 50.0],
-                            vec![10.5, 51.0],
-                            vec![10.0, 50.0],
-                        ]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(11.0, 50.0),
+                        Point::new(10.5, 51.0),
+                        Point::new(10.0, 50.0),
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // Feature 3 (identical geometry value)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![
-                            vec![10.0, 50.0],
-                            vec![11.0, 50.0],
-                            vec![10.5, 51.0],
-                            vec![10.0, 50.0],
-                        ]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::from(vec![
+                        Point::new(10.0, 50.0),
+                        Point::new(11.0, 50.0),
+                        Point::new(10.5, 51.0),
+                        Point::new(10.0, 50.0),
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
@@ -890,41 +838,39 @@ mod tests {
 
     #[test]
     fn test_collect_convex_boundingboxes_duplicate_polygons_in_germany_produce_one_hull() {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
             features: vec![
                 // Feature 1
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::Polygon(vec![vec![
-                            vec![10.0, 50.0],
-                            vec![11.0, 50.0],
-                            vec![11.0, 51.0],
-                            vec![10.0, 51.0],
-                            vec![10.0, 50.0],
-                        ]]), // Square
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::Polygon(Polygon::new(
+                        LineString::new(vec![
+                            Coord { x: 10.0, y: 50.0 },
+                            Coord { x: 11.0, y: 50.0 },
+                            Coord { x: 11.0, y: 51.0 },
+                            Coord { x: 10.0, y: 51.0 },
+                            Coord { x: 10.0, y: 50.0 },
+                        ]),
+                        vec![],
+                    ))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // Feature 2 (identical geometry value)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::Polygon(vec![vec![
-                            vec![10.0, 50.0],
-                            vec![11.0, 50.0],
-                            vec![11.0, 51.0],
-                            vec![10.0, 51.0],
-                            vec![10.0, 50.0],
-                        ]]), // Square
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::Polygon(Polygon::new(
+                        LineString::new(vec![
+                            Coord { x: 10.0, y: 50.0 },
+                            Coord { x: 11.0, y: 50.0 },
+                            Coord { x: 11.0, y: 51.0 },
+                            Coord { x: 10.0, y: 51.0 },
+                            Coord { x: 10.0, y: 50.0 },
+                        ]),
+                        vec![],
+                    ))),
                     id: None,
                     properties: None,
                     foreign_members: None,
@@ -960,61 +906,56 @@ mod tests {
 
     #[test]
     fn test_collect_convex_boundingboxes_mixed_valid_and_invalid_features() {
-        let featurecollection = FeatureCollection {
+        let featurecollection = GeoFeatureCollection {
             bbox: None,
             features: vec![
                 // Valid LineString in Germany -> Hull A (convex hull)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![
-                            vec![10.0, 50.0],
-                            vec![11.0, 50.0],
-                            vec![10.5, 51.0],
-                        ]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::new(vec![
+                        Coord { x: 10.0, y: 50.0 },
+                        Coord { x: 11.0, y: 50.0 },
+                        Coord { x: 10.5, y: 51.0 },
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // Invalid LineString (outside Germany) -> Skipped
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![
-                            vec![0.0, 0.0],
-                            vec![1.0, 1.0],
-                            vec![0.5, 1.0],
-                        ]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::new(vec![
+                        Coord { x: 0.0, y: 0.0 },
+                        Coord { x: 1.0, y: 1.0 },
+                        Coord { x: 0.5, y: 1.0 },
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // Valid Point in Germany -> Hull B (bounding box)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::Point(vec![10.0, 50.0]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::Point(Point::new(10.0, 50.0))),
+                    id: None,
+                    properties: None,
+                    foreign_members: None,
+                },
+                // Valid Point in Germany -> Hull B (bounding box)
+                GeoFeature {
+                    bbox: None,
+                    geometry: Some(GeoGeometry::Point(Point::new(10.0, 50.0))),
                     id: None,
                     properties: None,
                     foreign_members: None,
                 },
                 // Valid LineString in Germany (2 points) -> Hull C (bounding box)
-                Feature {
+                GeoFeature {
                     bbox: None,
-                    geometry: Some(geojson::Geometry {
-                        bbox: None,
-                        value: Value::LineString(vec![vec![10.0, 50.0], vec![11.0, 51.0]]),
-                        foreign_members: None,
-                    }),
+                    geometry: Some(GeoGeometry::LineString(LineString::new(vec![
+                        Coord { x: 10.0, y: 50.0 },
+                        Coord { x: 11.0, y: 51.0 },
+                    ]))),
                     id: None,
                     properties: None,
                     foreign_members: None,
