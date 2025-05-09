@@ -29,7 +29,7 @@ fn bench_100_features(c: &mut Criterion) {
             },
             |input_data| {
                 // This is the code being timed
-                let results = process_vertices_and_bends(input_data, bend_threshold_degrees, extension_distance);
+                let results = process_vertices_and_bends(input_data.into_iter().map(|f| f.into()).collect(), bend_threshold_degrees, extension_distance);
                 black_box(results);
             }
         )
@@ -50,7 +50,7 @@ fn bench_1k_features_processing_only(c: &mut Criterion) {
             },
             |input_data| {
                 // This is the code being timed
-                let results = process_vertices_and_bends(input_data, bend_threshold_degrees, extension_distance);
+                let results = process_vertices_and_bends(input_data.into_iter().map(|f| f.into()).collect(), bend_threshold_degrees, extension_distance);
                 black_box(results);
             }
         )
@@ -71,7 +71,7 @@ fn bench_10k_features(c: &mut Criterion) {
             },
             |input_data| {
                 // This is the code being timed
-                let results = process_vertices_and_bends(input_data, bend_threshold_degrees, extension_distance);
+                let results = process_vertices_and_bends(input_data.into_iter().map(|f| f.into()).collect(), bend_threshold_degrees, extension_distance);
                 black_box(results);
             }
         )
@@ -92,7 +92,7 @@ fn bench_100k_features(c: &mut Criterion) {
             },
             |input_data| {
                 // This is the code being timed
-                let results = process_vertices_and_bends(input_data, bend_threshold_degrees, extension_distance);
+                let results = process_vertices_and_bends(input_data.into_iter().map(|f| f.into()).collect(), bend_threshold_degrees, extension_distance);
                 black_box(results);
             }
         )
@@ -113,7 +113,7 @@ fn bench_1000k_features(c: &mut Criterion) {
             },
             |input_data| {
                 // This is the code being timed
-                let results = process_vertices_and_bends(input_data, bend_threshold_degrees, extension_distance);
+                let results = process_vertices_and_bends(input_data.into_iter().map(|f| f.into()).collect(), bend_threshold_degrees, extension_distance);
                 black_box(results);
             }
         )

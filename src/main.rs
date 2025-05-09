@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 
+use geo_utility::concat_and_scale::concat_test;
 use geo_utility::generation::complex::generate_synthetic_complex_featurecollection;
 use geo_utility::generation::deterministic_data_concatenate::generate_synthetic_data_collection;
 use geo_utility::generation::deterministic_feature_collection::generate_deterministic_feature_collection;
@@ -16,7 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // generate_deterministic_collection_data()?;
     // generate_synthetic_data()?;
     // generate_synthetic_collection_data()?;
-    generate_deterministic_data_concatenate()?;
+    // generate_deterministic_data_concatenate()?;
+    concat_test();
     Ok(())
 }
 

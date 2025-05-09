@@ -9,3 +9,4 @@ pub mod raw;
 pub mod raw_parallel;
 pub mod raw_serde;
 pub mod concatenate_features;
+pub mod concat_and_scale;

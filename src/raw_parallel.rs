@@ -2,13 +2,8 @@ use geojson::{GeoJson, Geometry};
 use rayon::prelude::*;
 use serde_json::Map;
 use std::convert::TryFrom;
-use thiserror::Error; // Import Rayon
+use crate::utils::error::Error;
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("Invalid feature collection")]
-    InvalidFeatureCollection,
-}
 
 // This function processes a single feature without converting to domain-specific structs
 // (Kept the same as provided by the user)

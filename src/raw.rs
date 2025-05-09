@@ -1,13 +1,7 @@
 use geojson::{GeoJson, Geometry};
 use serde_json::Map;
 use std::convert::TryFrom;
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("Invalid feature collection")]
-    InvalidFeatureCollection,
-}
+use crate::utils::error::Error;
 
 // This function processes a single feature without converting to domain-specific structs
 fn process_raw_feature(feature: geojson::Feature) -> geojson::Feature {

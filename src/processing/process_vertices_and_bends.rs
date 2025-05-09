@@ -1,5 +1,5 @@
 use geo::{Coord, LineString, Point};
-use geojson::{Feature, Value};
+use crate::utils::geometry::{GeoFeature, GeoGeometry};
 
 /// Checks if a feature is a "Gebäudekante" (building edge).
 ///
@@ -8,7 +8,7 @@ use geojson::{Feature, Value};
 ///
 /// # Returns
 /// A boolean indicating whether the feature is a "Gebäudekante" (building edge)
-pub fn is_gebaeudekante(feature: &Feature) -> bool {
+pub fn is_gebaeudekante(feature: &GeoFeature) -> bool {
     feature
         .properties
         .as_ref()
@@ -29,7 +29,7 @@ pub fn is_gebaeudekante(feature: &Feature) -> bool {
 /// # Returns
 /// A vector of (LineString) containing the generated geometry
 pub fn process_vertices_and_bends(
-    features: Vec<Feature>,
+    features: Vec<GeoFeature>,
     bend_threshold_degrees: f64, // Threshold angle in degrees to detect a bend at an inner vertex
     extension_distance: f64,     // The distance to extend the lines
 ) -> Vec<LineString<f64>> {
@@ -38,8 +38,8 @@ pub fn process_vertices_and_bends(
 
     for feature in &features {
         if let Some(geometry) = &feature.geometry {
-            match &geometry.value {
-                Value::LineString(line_coords) => {
+            match geometry {
+                GeoGeometry::LineString(line_coords) => {
                     // Filter out "Gebäudekante"
                     if is_gebaeudekante(feature) {
                         continue;
@@ -49,8 +49,8 @@ pub fn process_vertices_and_bends(
                     let coords: Vec<Coord<f64>> = line_coords
                         .into_iter()
                         .map(|coord| Coord {
-                            x: coord[0],
-                            y: coord[1],
+                            x: coord.x,
+                            y: coord.y,
                         })
                         .collect();
 
@@ -382,7 +382,7 @@ mod tests {
         ];
 
         let generated_features =
-            process_vertices_and_bends(features, bend_threshold_degrees, extension_distance);
+            process_vertices_and_bends(features.into_iter().map(|f| f.into()).collect(), bend_threshold_degrees, extension_distance);
 
         println!(
             "Generated {} feature sets in total.",

@@ -70,5 +70,10 @@ name = "concatenate_features_bench_seeded"
 path = "benches/concatenate_features_bench_seeded.rs"
 harness = false
 
+[[bench]]
+name = "concat_and_scale_bench"
+path = "benches/concat_and_scale.rs"
+harness = false
+
 [profile.bench]
 debug = true

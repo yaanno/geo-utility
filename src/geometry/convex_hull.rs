@@ -6,21 +6,10 @@ use geo::{BoundingRect, Coord, Intersects, Point, Rect};
 use geojson::{FeatureCollection, Value, Feature};
 use ordered_float::OrderedFloat;
 use std::collections::HashSet;
-use thiserror::Error;
+use crate::utils::error::Error;
 
 use crate::utils::utils::{InBoundingBox, GERMANY_BBOX};
 
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("Invalid geometry type")]
-    UnsupportedGeometryType,
-    #[error("Missing geometry")]
-    MissingGeometry,
-    #[error("Invalid coordinates")]
-    InvalidCoordinates,
-    #[error("Internal processing error")]
-    InternalProcessingError,
-}
 
 /// Creates a canonical representation of polygon points for hashing purposes.
 ///
