@@ -11,14 +11,14 @@ use geo_utility::generation::deterministic_data_concatenate_seeded::generate_syn
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // generate_synthetic_collection_data()?;
-    // generate_synthetic_complex_collection_data()?;
+    generate_synthetic_complex_collection_data()?;
     // calculate_bounding_box();
     // generate_deterministic_collection_data()?;
     // generate_deterministic_collection_data()?;
     // generate_synthetic_data()?;
     // generate_synthetic_collection_data()?;
     // generate_deterministic_data_concatenate()?;
-    concat_test();
+    // concat_test();
     Ok(())
 }
 
@@ -71,24 +71,14 @@ fn generate_synthetic_collection_data() -> Result<(), Box<dyn std::error::Error>
 
 #[allow(dead_code)]
 fn generate_synthetic_complex_collection_data() -> Result<(), Box<dyn std::error::Error>> {
-    let num_features = 100;
+    let num_features = 1000000;
     let x_range = (10.2978, 10.2996);
     let y_range = (50.8924, 50.8931);
 
     println!("Generating {} features...", num_features);
-    let mut feature_collection =
+    let feature_collection =
         generate_synthetic_complex_featurecollection(num_features, x_range, y_range);
 
-    let num_features = 100;
-    let x_range = (10.2989, 10.3012);
-    let y_range = (50.8916, 50.8918);
-
-    println!("Generating {} features...", num_features);
-    let feature_collection2 =
-        generate_synthetic_complex_featurecollection(num_features, x_range, y_range);
-    feature_collection
-        .features
-        .extend(feature_collection2.features); // Extend the existing feature collection with the new one
     println!("Generation complete. Serializing to JSON...");
 
     let geojson_string = serde_json::to_string(&feature_collection)?;

@@ -18,15 +18,15 @@ fn bench_100_features(c: &mut Criterion) {
     let scale_factor = 0.5;
 
     let features_100 =
-        load_features_from_file("synthetic_data_featurecollection_0k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_0k_features.geojson");
 
     c.bench_function("scale_buildings_100_features", |b| {
         b.iter_with_setup(
             || {
-                features_100.clone() // Clone the data here
+                features_100.clone().into() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data.into(), scale_factor);
+                let results = scale_buildings(&input_data, scale_factor);
                 black_box(results);
             }
         )
@@ -37,15 +37,15 @@ fn bench_1k_features(c: &mut Criterion) {
     let scale_factor = 0.5;
 
     let features_1k =
-        load_features_from_file("synthetic_data_featurecollection_1k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_1k_features.geojson");
 
     c.bench_function("scale_buildings_1k_features", |b| {
         b.iter_with_setup(
             || {
-                features_1k.clone() // Clone the data here
+                features_1k.clone().into() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data.into(), scale_factor);
+                let results = scale_buildings(&input_data, scale_factor);
                 black_box(results);
             }
         )
@@ -56,15 +56,15 @@ fn bench_10k_features(c: &mut Criterion) {
     let scale_factor = 0.5;
 
     let features_10k =
-        load_features_from_file("synthetic_data_featurecollection_10k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_10k_features.geojson");
 
     c.bench_function("scale_buildings_10k_features", |b| {
         b.iter_with_setup(
             || {
-                features_10k.clone() // Clone the data here
+                features_10k.clone().into() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data.into(), scale_factor);
+                let results = scale_buildings(&input_data, scale_factor);
                 black_box(results);
             }
         )
@@ -75,15 +75,15 @@ fn bench_100k_features(c: &mut Criterion) {
     let scale_factor = 0.5;
 
     let features_100k =
-        load_features_from_file("synthetic_data_featurecollection_100k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_100k_features.geojson");
 
     c.bench_function("scale_buildings_100k_features", |b| {
         b.iter_with_setup(
             || {
-                features_100k.clone() // Clone the data here
+                features_100k.clone().into() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data.into(), scale_factor);
+                let results = scale_buildings(&input_data, scale_factor);
                 black_box(results);
             }
         )
@@ -94,15 +94,15 @@ fn bench_1000k_features(c: &mut Criterion) {
     let scale_factor = 0.5;
 
     let features_1m =
-        load_features_from_file("synthetic_data_featurecollection_1000k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_1000k_features.geojson");
 
     c.bench_function("scale_buildings_1000k_features", |b| {
         b.iter_with_setup(
             || {
-                features_1m.clone() // Clone the data here
+                features_1m.clone().into() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data.into(), scale_factor);
+                let results = scale_buildings(&input_data, scale_factor);
                 black_box(results);
             }
         )
@@ -113,15 +113,15 @@ fn bench_10_000k_features(c: &mut Criterion) {
     let scale_factor = 0.5;
 
     let features_1m =
-        load_features_from_file("synthetic_data_featurecollection_10000k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_10000k_features.geojson");
 
     c.bench_function("scale_buildings_10_000k_features", |b| {
         b.iter_with_setup(
             || {
-                features_1m.clone() // Clone the data here
+                features_1m.clone().into() // Clone the data here
             },
             |input_data| {
-                let results = scale_buildings(&input_data.into(), scale_factor);
+                let results = scale_buildings(&input_data, scale_factor);
                 black_box(results);
             }
         )
