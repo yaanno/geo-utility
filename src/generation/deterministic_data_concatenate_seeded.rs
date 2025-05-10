@@ -4,7 +4,6 @@ use serde_json::{json, Value as JsonValue};
 use rand::{Rng, SeedableRng}; // Import SeedableRng
 use rand::rngs::StdRng; // Use a standard RNG
 use rand::distributions::Uniform;
-use std::convert::TryInto;
 
 
 // Helper function to generate a synthetic LineString feature
@@ -13,7 +12,7 @@ fn create_synthetic_line_string(id: usize, start_coord: [f64; 2], end_coord: [f6
      Feature {
         bbox: None,
         geometry: Some(Geometry::new(Value::LineString(coords))),
-        id: Some(geojson::feature::Id::Number(id.try_into().unwrap())), // Use usize as ID
+        id: Some(geojson::feature::Id::Number(id.into())), // Use usize as ID
         properties,
         foreign_members: None,
     }

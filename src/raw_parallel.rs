@@ -35,15 +35,11 @@ fn process_raw_feature(mut feature: geojson::Feature) -> geojson::Feature {
                     // Return the processed feature (with original geometry and modified properties)
                     feature.geometry = Some(Geometry::from(&point)); // Convert geo::Point back to geojson::Geometry
                     feature.properties = Some(properties); // Use the modified properties
-                    feature.bbox = feature.bbox; // Keep original bbox or recalculate
-                    feature.foreign_members = feature.foreign_members; // Keep original
                     feature // Return modified feature
                 }
                 geo::Geometry::Polygon(polygon) => {
                     feature.geometry = Some(Geometry::from(&polygon)); // Convert geo::Polygon back
                     feature.properties = Some(properties);
-                    feature.bbox = feature.bbox;
-                    feature.foreign_members = feature.foreign_members;
                     feature // Return modified feature
                 }
                 geo::Geometry::MultiPolygon(mp) => {
@@ -52,16 +48,12 @@ fn process_raw_feature(mut feature: geojson::Feature) -> geojson::Feature {
                     // Let's change this to match the other arms
                     feature.geometry = Some(Geometry::from(&mp));
                     feature.properties = Some(properties);
-                    feature.bbox = feature.bbox;
-                    feature.foreign_members = feature.foreign_members;
                     feature // Return modified feature
                 }
                 geo::Geometry::LineString(ls) => {
                     if ls.is_closed() {
                         feature.geometry = Some(Geometry::from(&ls));
                         feature.properties = Some(properties);
-                        feature.bbox = feature.bbox;
-                        feature.foreign_members = feature.foreign_members;
                         feature // Return modified feature
                     } else {
                         // It's a LineString with objectId "Gebaeude", but not closed - handle as Unknown or specific error
@@ -69,8 +61,6 @@ fn process_raw_feature(mut feature: geojson::Feature) -> geojson::Feature {
                         // eprintln!("Raw processing: Gebaeude feature {:?} has an unclosed LineString geometry", feature_id);
                         feature.geometry = Some(Geometry::from(&ls)); // Keep the unclosed LS geometry
                         feature.properties = Some(properties);
-                        feature.bbox = feature.bbox;
-                        feature.foreign_members = feature.foreign_members;
                         feature // Return modified feature
                     }
                 }
@@ -80,8 +70,6 @@ fn process_raw_feature(mut feature: geojson::Feature) -> geojson::Feature {
                     // eprintln!("Raw processing: Unidentified feature {:?} (Geometry: {:?}, objectId: {:?})", ...);
                     feature.geometry = Some(Geometry::from(&geo_geom)); // Keep the geometry
                     feature.properties = Some(properties); // Use empty properties map
-                    feature.bbox = feature.bbox;
-                    feature.foreign_members = feature.foreign_members;
                     feature // Return the (potentially modified) feature
                 }
             }
@@ -92,8 +80,6 @@ fn process_raw_feature(mut feature: geojson::Feature) -> geojson::Feature {
             // eprintln!("Raw processing: Feature {:?} has no valid geometry", feature_id);
             feature.geometry = None; // Ensure geometry is None
             feature.properties = Some(properties); // Use empty properties map
-            feature.bbox = feature.bbox;
-            feature.foreign_members = feature.foreign_members;
             feature // Return the modified feature
         }
     }

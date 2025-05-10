@@ -1,8 +1,6 @@
+use crate::processing::grouping::{group_rects_by_overlap, index_rectangles, merge_components};
 use crate::utils::geometry::{Rectangle, RectangleWithId};
-use crate::processing::grouping::{group_rects_by_overlap, merge_components, index_rectangles};
-use crate::utils::utils::{
-    BoundingBoxOps, Grid, InBoundingBox, GERMANY_BBOX
-};
+use crate::utils::utils::{BoundingBoxOps, GERMANY_BBOX, Grid, InBoundingBox};
 use geo::geometry::LineString as GeoLineString;
 use geo::{BoundingRect, ConvexHull, Coord, MultiPoint, Point, Rect};
 use ordered_float::OrderedFloat;
@@ -79,10 +77,10 @@ pub fn collect_bounding_boxes(
     let from_crs = "EPSG:4326";
     let to_crs = "EPSG:3035";
 
-    let proj_transformer = Proj::new_known_crs(&from_crs, &to_crs, None)
-        .map_err(|e| CollectBoundingBoxError::ProjCreateError(e))?;
-    let proj_transformer_reverse = Proj::new_known_crs(&to_crs, &from_crs, None)
-        .map_err(|e| CollectBoundingBoxError::ProjCreateError(e))?;
+    let proj_transformer = Proj::new_known_crs(from_crs, to_crs, None)
+        .map_err(CollectBoundingBoxError::ProjCreateError)?;
+    let proj_transformer_reverse = Proj::new_known_crs(to_crs, from_crs, None)
+        .map_err(CollectBoundingBoxError::ProjCreateError)?;
     let initial_geo_rects =
         collect_initial_buffered_rects(featurecollection, radius.get(), &proj_transformer);
 
@@ -100,10 +98,7 @@ pub fn collect_bounding_boxes(
 
     let tree = index_rectangles(&merged_rectangles);
 
-    let grid_cells_intersecting_shapes =
-        create_transformed_grid_cells(proj_transformer_reverse, initial_grid_cells, tree);
-
-    grid_cells_intersecting_shapes
+    create_transformed_grid_cells(proj_transformer_reverse, initial_grid_cells, tree)
 }
 
 /**
@@ -179,7 +174,8 @@ fn calculate_initial_grid_cells(
             overall_initial_extent,
             calculated_cell_size_meters,
             calculated_cell_size_meters,
-        ).cells;
+        )
+        .cells;
     } else {
         return Err(CollectBoundingBoxError::InvalidCellSize);
     }

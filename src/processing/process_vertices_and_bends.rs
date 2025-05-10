@@ -15,8 +15,7 @@ pub fn is_gebaeudekante(feature: &GeoFeature) -> bool {
         .and_then(|props| props.get("properties"))
         .and_then(|nested_props| nested_props.as_object())
         .and_then(|obj| obj.get("objectId"))
-        .and_then(|id| id.as_str())
-        .map_or(false, |id_str| id_str == "Gebäudekante")
+        .and_then(|id| id.as_str()) == Some("Gebäudekante")
 }
 
 /// Processes original LineString vertices, detecting bends and handling simple 2-point lines, to generate extended features.

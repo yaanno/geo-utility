@@ -93,16 +93,16 @@ pub struct Building {
 }
 
 // This impl should NOT use the macro defined for Point entities
-impl Into<Feature> for &Building {
-    fn into(self) -> Feature {
+impl From<&Building> for Feature {
+    fn from(val: &Building) -> Self {
         // Convert the geo::Geometry to geojson::Geometry
-        let geometry = Geometry::from(&self.geometry).clone(); // Convert GeoGeometry
+        let geometry = Geometry::from(&val.geometry).clone(); // Convert GeoGeometry
 
         // Clone the original inner properties
-        let mut properties = self.original_inner_properties.clone();
+        let mut properties = val.original_inner_properties.clone();
 
         // Add objectId back to output properties if present in original inner (optional)
-        if let Some(Value::String(obj_id)) = self.original_inner_properties.get("objectId") {
+        if let Some(Value::String(obj_id)) = val.original_inner_properties.get("objectId") {
             properties.insert("objectId".to_string(), Value::String(obj_id.clone()));
         }
         // Add Building-specific fields to output properties if needed
@@ -111,7 +111,7 @@ impl Into<Feature> for &Building {
             geometry: Some(geometry),
             properties: Some(properties),
             bbox: None, // Calculate this if needed
-            id: Some(Id::String(self.id.clone())),
+            id: Some(Id::String(val.id.clone())),
             foreign_members: None, // Forward foreign members if your structs held them
         }
     }
@@ -155,7 +155,7 @@ impl DomainEntity {
     }
 }
 
-impl Into<Feature> for &DomainEntity {
+impl From<&DomainEntity> for Feature {
     /// Helper function to convert a DomainEntity variant to a GeoJSON feature.
     ///
     /// # Arguments
@@ -165,8 +165,8 @@ impl Into<Feature> for &DomainEntity {
     /// # Returns
     ///
     /// * `Feature` - The converted GeoJSON feature.
-    fn into(self) -> Feature {
-        match self {
+    fn from(val: &DomainEntity) -> Self {
+        match val {
             DomainEntity::CapturedMarker(marker) => marker.into(),
             DomainEntity::SupplyPoint(point) => point.into(),
             DomainEntity::OperationSite(site) => site.into(),
@@ -373,7 +373,7 @@ fn indentify_domain_entity(feature: Feature) -> DomainEntity {
                             let point_geometry = match get_point_geometry(
                                 &feature, // Pass by reference
                                 &original_feature,
-                                &object_id_value, // Still need the string for logging context in helper
+                                object_id_value, // Still need the string for logging context in helper
                             ) {
                                 Ok(value) => value,
                                 Err(unknown_entity) => return unknown_entity, // Return Unknown if geometry extraction fails

@@ -29,24 +29,22 @@ pub fn scale_buildings(
                     if line.is_empty() {
                         continue; // Skip empty LineStrings
                     }
-                    let scaled_line: LineString<f64>;
                     // check if the line is closed: first and last point are the same
 
-                    if line.is_closed() {
+                    let scaled_line: LineString<f64> = if line.is_closed() {
                         // convert linestring to polygon
                         let polygon = Polygon::new(line, vec![]);
                         let scaled_polygon = polygon.scale(scale_factor);
-                        scaled_line = scaled_polygon.exterior().clone();
+                        scaled_polygon.exterior().clone()
                     } else {
                         // Scale the LineString
-                        scaled_line = line
-                            .coords()
+                        line.coords()
                             .map(|&c| Coord {
                                 x: scale_factor * c.x,
                                 y: scale_factor * c.y,
                             })
-                            .collect();
-                    }
+                            .collect()
+                    };
 
                     scaled_feature_collection.features.push(GeoFeature {
                         bbox: feature.bbox.clone(),

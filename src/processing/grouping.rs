@@ -30,8 +30,8 @@ pub fn merge_components(
 
     // Now merge rectangles in each component to compute the overall bounding box.
     let merged_rectangles: Vec<Rectangle> = components
-        .into_iter()
-        .map(|(_root, group)| {
+        .into_values()
+        .map(|group| {
             let (min_x, min_y, max_x, max_y) = group.iter().fold(
                 // Iterating over &Rectangle here
                 (
@@ -102,11 +102,10 @@ pub fn group_rects_by_overlap(rectangles: &[Rectangle]) -> QuickUnionUf<UnionByS
  */
 pub fn index_rectangles(rectangles: &[Rectangle]) -> RTree<RectangleWithId> {
     let rtree_data: Vec<RectangleWithId> = rectangles
-        .into_iter()
+        .iter()
         .enumerate()
         .map(|(i, rect)| RectangleWithId(rect.clone(), i))
         .collect();
 
-    let tree = RTree::bulk_load(rtree_data);
-    tree
+    RTree::bulk_load(rtree_data)
 }

@@ -23,7 +23,7 @@ impl Feature {
     pub fn from_geojson(feature: geojson::Feature) -> Self {
         Feature {
             type_field: "Feature".to_string(),
-            properties: feature.properties.map(|properties| Map::from(properties)),
+            properties: feature.properties,
         }
     }
 }

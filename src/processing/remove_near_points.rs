@@ -27,7 +27,7 @@ pub fn remove_near_points(collection: &GeoFeatureCollection) -> GeoFeatureCollec
                         let mut rtree: RTree<Point<f64>> = RTree::new();
                         // Add first coordinate as reference point
                         if let Some(first) = coordinates.coords().next() {
-                            filtered_coordinates.push(first.clone());
+                            filtered_coordinates.push(*first);
                             rtree.insert(Point::new(first.x, first.y));
                         }
                         // Compare each point with all previously kept points
@@ -39,7 +39,7 @@ pub fn remove_near_points(collection: &GeoFeatureCollection) -> GeoFeatureCollec
 
                             // If no neighbors are found, the point is far enough from existing points, so keep it.
                             if neighbors.count() == 0 {
-                                filtered_coordinates.push(coord.clone());
+                                filtered_coordinates.push(*coord);
                                 rtree.insert(current_point); // Add the kept point to the R-tree
                             }
                         }
@@ -59,7 +59,7 @@ pub fn remove_near_points(collection: &GeoFeatureCollection) -> GeoFeatureCollec
                     }
                     GeoGeometry::Point(point) => coll.features.push(GeoFeature {
                         bbox: feature.bbox.clone(),
-                        geometry: Some(GeoGeometry::Point(point.clone())),
+                        geometry: Some(GeoGeometry::Point(*point)),
                         id: feature.id.clone(),
                         properties: feature.properties.clone(),
                         foreign_members: feature.foreign_members.clone(),
@@ -72,7 +72,7 @@ pub fn remove_near_points(collection: &GeoFeatureCollection) -> GeoFeatureCollec
                         let mut rtree: RTree<Point<f64>> = RTree::new();
                         // Add first coordinate as reference point
                         if let Some(first) = coordinates.coords_iter().next() {
-                            filtered_coordinates.push(first.clone());
+                            filtered_coordinates.push(first);
                             rtree.insert(Point::new(first.x, first.y));
                         }
                         // Compare each point with all previously kept points
@@ -83,7 +83,7 @@ pub fn remove_near_points(collection: &GeoFeatureCollection) -> GeoFeatureCollec
                                 .locate_within_distance(current_point, squared_distance_threshold);
                             // If no neighbors are found, the point is far enough from existing points, so keep it.
                             if neighbors.count() == 0 {
-                                filtered_coordinates.push(coord.clone());
+                                filtered_coordinates.push(coord.to_owned());
                                 rtree.insert(current_point); // Add the kept point to the R-tree
                             }
                         }

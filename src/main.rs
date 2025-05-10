@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 
+#[allow(unused_imports)]
 use geo_utility::concat_and_scale::concat_test;
 use geo_utility::generation::complex::generate_synthetic_complex_featurecollection;
 use geo_utility::generation::deterministic_data_concatenate::generate_synthetic_data_collection;

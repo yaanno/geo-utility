@@ -107,7 +107,12 @@ fn process_single_feature(feature: &GeoFeature, germany_rect: &Rect) -> Option<g
             if !line_coords.in_bounding_box(&GERMANY_BBOX) {
                 all_points_in_germany = false;
             } else {
-                coords.extend(line_coords.coords().map(|c| Coord { x: c.x, y: c.y }).collect::<Vec<Coord>>()); // Use for unique count check
+                coords.extend(
+                    line_coords
+                        .coords()
+                        .map(|c| Coord { x: c.x, y: c.y })
+                        .collect::<Vec<Coord>>(),
+                ); // Use for unique count check
                 geometry_for_fallback_bbox = Some(GeoGeometry::LineString(line_coords.clone())); // Create geo::LineString for bbox
             }
         }
@@ -164,8 +169,11 @@ fn process_single_feature(feature: &GeoFeature, germany_rect: &Rect) -> Option<g
             } else {
                 let multiline_coords_vec_geo: Vec<Coord> = multiline_coords_vec
                     .iter()
-                    .map(|ls| ls.coords().map(|c| Coord { x: c.x, y: c.y }).collect::<Vec<Coord>>())
-                    .flatten()
+                    .flat_map(|ls| {
+                        ls.coords()
+                            .map(|c| Coord { x: c.x, y: c.y })
+                            .collect::<Vec<Coord>>()
+                    })
                     .collect();
 
                 coords.extend(multiline_coords_vec_geo.clone()); // Use for unique count check
@@ -187,9 +195,7 @@ fn process_single_feature(feature: &GeoFeature, germany_rect: &Rect) -> Option<g
             } else {
                 let all_exterior_coords: Vec<Coord> = multipolygon_coords_vec
                     .iter()
-                    .filter_map(|poly| Some(poly.exterior().coords())) // Get exterior rings
-                    .flatten() // Flatten points from all exterior rings
-                    .map(|c| Coord { x: c.x, y: c.y })
+                    .flat_map(|poly| poly.exterior().coords().map(|c| Coord { x: c.x, y: c.y }))
                     .collect();
 
                 coords.extend(all_exterior_coords.clone()); // Use for unique count check

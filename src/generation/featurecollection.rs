@@ -1,3 +1,5 @@
+use std::f64::consts;
+
 use geo::{Coord, LineString};
 use geojson::{Feature, FeatureCollection, Geometry, Value};
 // Remove rand imports
@@ -14,8 +16,8 @@ fn gen_coord_deterministic(counter: &mut usize, x_range: (f64, f64), y_range: (f
     // Use a deterministic mapping based on the counter to distribute points
     // Using fractional part of multiplication with large primes for distribution
     // These primes help ensure points don't just fall on a simple grid pattern.
-    const PRIME_X: f64 = 1_618_033.9887; // Related to Golden Ratio
-    const PRIME_Y: f64 = 2_718_281.8284; // Related to e
+    const PRIME_X: f64 = 1_618_033.988_7; // Related to Golden Ratio
+    const PRIME_Y: f64 = consts::E;
 
     let x_progress = (current_count as f64 * PRIME_X).fract(); // Value between 0.0 and 1.0
     let y_progress = (current_count as f64 * PRIME_Y).fract(); // Value between 0.0 and 1.0
@@ -37,9 +39,9 @@ fn deterministic_square_params(
     margin: f64, // Ensure square fits within range minus margin
 ) -> (f64, f64, f64) {
     // Use feature index and primes to deterministically distribute squares
-    const PRIME_OFFSET_X: f64 = 3.1415926535; // Pi
-    const PRIME_OFFSET_Y: f64 = 2.7182818284; // e
-    const PRIME_SIZE: f64 = 1.4142135623; // Sqrt(2)
+    const PRIME_OFFSET_X: f64 = consts::PI;
+    const PRIME_OFFSET_Y: f64 = consts::E;
+    const PRIME_SIZE: f64 = consts::SQRT_2;
 
     // Map index to position within available range using fractional part
     let available_x_range = x_range.1 - margin - x_range.0;

@@ -114,21 +114,11 @@ pub struct GeoFeature {
 }
 
 /// Struct to hold the collection of intermediate features
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct GeoFeatureCollection {
     pub bbox: Option<Bbox>,
     pub foreign_members: Option<Map<String, JsonValue>>,
     pub features: Vec<GeoFeature>,
-}
-
-impl Default for GeoFeatureCollection {
-    fn default() -> Self {
-        GeoFeatureCollection {
-            bbox: None,
-            foreign_members: None,
-            features: Vec::new(),
-        }
-    }
 }
 
 /// Convert a geojson Geometry to a GeoGeometry

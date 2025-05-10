@@ -42,8 +42,7 @@ pub fn extend_straight_line(
     if is_geodesic {
         // --- Correct Geodesic Extension Logic ---
         let bearing = Geodesic.bearing(point_a, point_b);
-        let extended_point_geo = Geodesic.destination(point_b, bearing, extension);
-        extended_point_geo
+        Geodesic.destination(point_b, bearing, extension)
     } else {
         // --- Correct Euclidean Extension Logic ---
         let distance = Euclidean.distance(&point_a, &point_b);

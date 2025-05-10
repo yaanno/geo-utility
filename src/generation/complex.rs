@@ -10,8 +10,8 @@ fn gen_coord_deterministic(counter: &mut usize, x_range: (f64, f64), y_range: (f
 
     // Use a deterministic mapping based on the counter to distribute points
     // Using fractional part of multiplication with large primes for distribution
-    const PRIME_X: f64 = 1_618_033.9887; // Related to Golden Ratio
-    const PRIME_Y: f64 = 2_718_281.8284; // Related to e
+    const PRIME_X: f64 = 1_618_033.988_7; // Related to Golden Ratio
+    const PRIME_Y: f64 = 2_718_281.828_4; // Related to e
 
     let x_progress = (current_count as f64 * PRIME_X).fract(); // Value between 0.0 and 1.0
     let y_progress = (current_count as f64 * PRIME_Y).fract(); // Value between 0.0 and 1.0

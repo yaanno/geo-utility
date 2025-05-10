@@ -7,7 +7,7 @@ fn create_synthetic_line_string(id: usize, coords: Vec<Vec<f64>>, properties: Op
     Feature {
        bbox: None,
        geometry: Some(Geometry::new(Value::LineString(coords))),
-       id: Some(geojson::feature::Id::Number(id.try_into().unwrap())), // Use usize as ID
+       id: Some(geojson::feature::Id::Number(id.into())), // Use usize as ID
        properties,
        foreign_members: None,
    }

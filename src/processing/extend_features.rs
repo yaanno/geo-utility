@@ -25,8 +25,7 @@ pub fn extend_features(
                         .and_then(|props| props.get("properties"))
                         .and_then(|nested_props| nested_props.as_object())
                         .and_then(|obj| obj.get("objectId"))
-                        .and_then(|id| id.as_str())
-                        .map_or(false, |id_str| id_str == "Gebäudekante");
+                        .and_then(|id| id.as_str()) == Some("Gebäudekante");
 
                     if is_gebaeudekante {
                         println!("Skipping feature with objectId: Gebäudekante");
@@ -47,7 +46,7 @@ pub fn extend_features(
                         // We want the *end point* of each of these new segments as our points.
                         let segment_endpoints: Vec<Point<f64>> = segmented_line_string
                             .coords_iter()
-                            .map(|c| Point::from(c))
+                            .map(Point::from)
                             .collect();
 
                         // Iterate through the endpoints, starting from the second point
