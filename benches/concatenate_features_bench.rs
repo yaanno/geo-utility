@@ -14,7 +14,7 @@ fn load_features_from_file(file_path: &str) -> geojson::FeatureCollection {
 
 fn bench_100_features(c: &mut Criterion) {
     let features_100 =
-        load_features_from_file("deterministic_data_featurecollection_0k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_0k_features.geojson");
 
     c.bench_function("concatenate_features_100_features", |b| {
         b.iter_with_setup(
@@ -31,7 +31,7 @@ fn bench_100_features(c: &mut Criterion) {
 
 fn bench_1k_features(c: &mut Criterion) {
     let features_1k =
-        load_features_from_file("deterministic_data_featurecollection_1k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_1k_features.geojson");
 
     c.bench_function("concatenate_features_1k_features", |b| {
         b.iter_with_setup(
@@ -48,7 +48,7 @@ fn bench_1k_features(c: &mut Criterion) {
 
 fn bench_10k_features(c: &mut Criterion) {
     let features_10k =
-        load_features_from_file("deterministic_data_featurecollection_10k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_10k_features.geojson");
 
     c.bench_function("concatenate_features_10k_features", |b| {
         b.iter_with_setup(
@@ -65,7 +65,7 @@ fn bench_10k_features(c: &mut Criterion) {
 
 fn bench_100k_features(c: &mut Criterion) {
     let features_100k =
-        load_features_from_file("deterministic_data_featurecollection_100k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_100k_features.geojson");
 
     c.bench_function("concatenate_features_100k_features", |b| {
         b.iter_with_setup(

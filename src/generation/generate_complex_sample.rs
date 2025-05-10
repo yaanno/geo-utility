@@ -1,5 +1,6 @@
 // Import other necessary geo types
 use geojson::{Feature, FeatureCollection, Geometry, Value};
+use serde_json::Map;
 
 
 /// Generates a single deterministic coordinate within the specified ranges
@@ -216,11 +217,37 @@ pub fn generate_synthetic_complex_featurecollection(
             _ => (None, None), // Should not happen with i % NUM_GEOM_TYPES
         };
 
+        // Properties remain deterministic based on geom_type
+        let properties = match geom_type {
+            0 => { // Point
+                let mut props = Map::new();
+                let mut inner_props = Map::new();
+                inner_props.insert("objectId".to_string(), serde_json::Value::String("Kugelmarker".to_string()));
+                props.insert("properties".to_string(), serde_json::Value::Object(inner_props));
+                Some(props)
+            }
+            1 => { // Open LineString
+                let mut props = Map::new();
+                let mut inner_props = Map::new();
+                inner_props.insert("objectId".to_string(), serde_json::Value::String("Linie".to_string()));
+                props.insert("properties".to_string(), serde_json::Value::Object(inner_props));
+                Some(props)
+            },
+            2 | 3 => { // Closed LineString (Gebaeude) or Polygon (Gebaeude)
+                let mut props = Map::new();
+                let mut inner_props = Map::new();
+                inner_props.insert("objectId".to_string(), serde_json::Value::String("Gebaeude".to_string()));
+                props.insert("properties".to_string(), serde_json::Value::Object(inner_props));
+                Some(props)
+            },
+            _ => None, // Should not happen
+        };
+
         let feature = Feature {
             bbox,
             geometry,
             id: Some(geojson::feature::Id::Number((i as u64).into())), // Simple deterministic ID
-            properties: None, // Or add deterministic properties based on `i`
+            properties, // Or add deterministic properties based on `i`
             foreign_members: None,
         };
         features.push(feature);

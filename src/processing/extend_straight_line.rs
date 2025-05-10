@@ -62,7 +62,7 @@ pub fn extend_straight_line(
 mod tests {
     use super::*;
     use geo::Point;
-    use std::f64::EPSILON; // Standard epsilon for f64 comparisons
+    // Standard epsilon for f64 comparisons
 
     // Helper function for approximate point equality
     fn points_approx_equal(p1: Point<f64>, p2: Point<f64>, epsilon: f64) -> bool {
@@ -92,7 +92,7 @@ mod tests {
 
         let extended_point = extend_straight_line(point_a, point_b, extension, is_geodesic);
         let expected_point = Point::new(4.0, 0.0); // Start at (2,0), move 2 more units in x direction
-        assert!(points_approx_equal(extended_point, expected_point, EPSILON));
+        assert!(points_approx_equal(extended_point, expected_point, f64::EPSILON));
     }
 
     #[test]
@@ -104,7 +104,7 @@ mod tests {
 
         let extended_point = extend_straight_line(point_a, point_b, extension, is_geodesic);
         let expected_point = Point::new(2.0, 2.0); // Start at (1,1), move (1,1) more
-        assert!(points_approx_equal(extended_point, expected_point, EPSILON));
+        assert!(points_approx_equal(extended_point, expected_point, f64::EPSILON));
     }
 
     #[test]
@@ -121,7 +121,7 @@ mod tests {
         let expected_y = 1.0 + 1.0 / f64::sqrt(2.0);
         let expected_point = Point::new(expected_x, expected_y);
 
-        assert!(points_approx_equal(extended_point, expected_point, EPSILON));
+        assert!(points_approx_equal(extended_point, expected_point, f64::EPSILON));
     }
 
     #[test]
@@ -133,7 +133,7 @@ mod tests {
 
         let extended_point = extend_straight_line(point_a, point_b, extension, is_geodesic);
         let expected_point = point_b; // Should return point_b
-        assert!(points_approx_equal(extended_point, expected_point, EPSILON));
+        assert!(points_approx_equal(extended_point, expected_point, f64::EPSILON));
     }
 
     #[test]
@@ -152,7 +152,7 @@ mod tests {
         // let expected_point = Point::new(-10.0 + (-10.0 - (-5.0)), -10.0 + (-10.0 - (-5.0)));
         // let expected_point = Point::new(-10.0 - 5.0, -10.0 - 5.0);
         let expected_point = Point::new(-15.0, -15.0);
-        assert!(points_approx_equal(extended_point, expected_point, EPSILON));
+        assert!(points_approx_equal(extended_point, expected_point, f64::EPSILON));
     }
 
     // --- Geodesic Tests ---

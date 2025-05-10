@@ -16,9 +16,9 @@ fn load_features_from_file(file_path: &str) -> GeoJson {
 
 fn bench_100_features(c: &mut Criterion) {
     let features_100 =
-        load_features_from_file("deterministic_data_featurecollection_0k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_0k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_500_features", |b| {
+    c.bench_function("indentify_domain_entities_100_features", |b| {
         b.iter_with_setup(
             || {
                 features_100.clone() // Clone the data here
@@ -33,9 +33,9 @@ fn bench_100_features(c: &mut Criterion) {
 
 fn bench_1k_features(c: &mut Criterion) {
     let features_1k =
-        load_features_from_file("deterministic_data_featurecollection_1k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_1k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_5k_features", |b| {
+    c.bench_function("indentify_domain_entities_1k_features", |b| {
         b.iter_with_setup(
             || {
                 features_1k.clone() // Clone the data here
@@ -50,9 +50,9 @@ fn bench_1k_features(c: &mut Criterion) {
 
 fn bench_10k_features(c: &mut Criterion) {
     let features_10k =
-        load_features_from_file("deterministic_data_featurecollection_10k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_10k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_50k_features", |b| {
+    c.bench_function("indentify_domain_entities_10k_features", |b| {
         b.iter_with_setup(
             || {
                 features_10k.clone() // Clone the data here
@@ -67,9 +67,9 @@ fn bench_10k_features(c: &mut Criterion) {
 
 fn bench_100k_features(c: &mut Criterion) {
     let features_100k =
-        load_features_from_file("deterministic_data_featurecollection_100k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_100k_features.geojson");
 
-    c.bench_function("indentify_domain_entities_500k_features", |b| {
+    c.bench_function("indentify_domain_entities_100k_features", |b| {
         b.iter_with_setup(
             || {
                 features_100k.clone() // Clone the data here
@@ -84,7 +84,7 @@ fn bench_100k_features(c: &mut Criterion) {
 
 fn bench_1000k_features(c: &mut Criterion) {
     let features_1m =
-        load_features_from_file("deterministic_data_featurecollection_1000k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_1000k_features.geojson");
 
     c.bench_function("indentify_domain_entities_1000k_features", |b| {
         b.iter_with_setup(
@@ -101,7 +101,7 @@ fn bench_1000k_features(c: &mut Criterion) {
 
 fn bench_10_000k_features(c: &mut Criterion) {
     let features_1m =
-        load_features_from_file("deterministic_data_featurecollection_10000k_features.geojson");
+        load_features_from_file("synthetic_data_complex_featurecollection_10000k_features.geojson");
 
     c.bench_function("indentify_domain_entities_10_000k_features", |b| {
         b.iter_with_setup(
@@ -130,7 +130,7 @@ criterion_group!(
 
 criterion_group!(
     name = benches_10k;
-    config = Criterion::default().sample_size(100);
+    config = Criterion::default().sample_size(10);
     targets = bench_10k_features
 );
 

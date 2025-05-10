@@ -19,7 +19,7 @@ fn bench_100_features(c: &mut Criterion) {
     let bend_threshold_degrees = 10.0;
     let extension_distance = 0.5;
 
-    let features_100 = load_features_from_file("synthetic_data_0k_features.geojson");
+    let features_100 = load_features_from_file("synthetic_data_curve_test_0k_features.geojson");
 
     c.bench_function("process_vertices_and_bends_100_features", |b| {
         b.iter_with_setup(
@@ -40,7 +40,7 @@ fn bench_1k_features_processing_only(c: &mut Criterion) {
     let bend_threshold_degrees = 10.0;
     let extension_distance = 0.5;
 
-    let features_1k_loaded = load_features_from_file("synthetic_data_1k_features.geojson");
+    let features_1k_loaded = load_features_from_file("synthetic_data_curve_test_1k_features.geojson");
 
     c.bench_function("process_vertices_and_bends_1k_features_processing_only", |b| {
         b.iter_with_setup(
@@ -61,7 +61,7 @@ fn bench_10k_features(c: &mut Criterion) {
     let bend_threshold_degrees = 10.0;
     let extension_distance = 0.5;
 
-    let features_10k = load_features_from_file("synthetic_data_10k_features.geojson");
+    let features_10k = load_features_from_file("synthetic_data_curve_test_10k_features.geojson");
 
     c.bench_function("process_vertices_and_bends_10k_features", |b| {
         b.iter_with_setup(
@@ -82,7 +82,7 @@ fn bench_100k_features(c: &mut Criterion) {
     let bend_threshold_degrees = 10.0;
     let extension_distance = 0.5;
 
-    let features_100k = load_features_from_file("synthetic_data_100k_features.geojson");
+    let features_100k = load_features_from_file("synthetic_data_curve_test_100k_features.geojson");
 
     c.bench_function("process_vertices_and_bends_100k_features", |b| {
         b.iter_with_setup(
@@ -103,7 +103,7 @@ fn bench_1000k_features(c: &mut Criterion) {
     let bend_threshold_degrees = 10.0;
     let extension_distance = 0.5;
 
-    let features_1m = load_features_from_file("synthetic_data_1000k_features.geojson");
+    let features_1m = load_features_from_file("synthetic_data_curve_test_1000k_features.geojson");
 
     c.bench_function("process_vertices_and_bends_1000k_features", |b| {
         b.iter_with_setup(
@@ -128,13 +128,13 @@ criterion_group!(
 
 criterion_group!(
     name = benches_1k;
-    config = Criterion::default().sample_size(100);
+    config = Criterion::default().sample_size(50);
     targets = bench_1k_features_processing_only
 );
 
 criterion_group!(
     name = benches_10k;
-    config = Criterion::default().sample_size(100);
+    config = Criterion::default().sample_size(10);
     targets = bench_10k_features
 );
 

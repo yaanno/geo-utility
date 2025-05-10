@@ -78,7 +78,8 @@ pub fn generate_synthetic_data_concatenate_seeded(num_line_strings: usize, close
                 "width": 0.3,
                 "comment": null,
                 "label": format!("Line {}", i),
-                "material": "PVC"
+                "material": "PVC",
+                "large_data": json!({"filler": "a".repeat(100)}), // 100B string example
             }),
             "surface": "ground"
         }));

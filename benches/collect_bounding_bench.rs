@@ -123,7 +123,7 @@ criterion_group!(
 
 criterion_group!(
     name = benches_10k;
-    config = Criterion::default().sample_size(100);
+    config = Criterion::default().sample_size(10);
     targets = bench_10k_features
 );
 
