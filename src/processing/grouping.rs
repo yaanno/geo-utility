@@ -1,4 +1,5 @@
 use crate::utils::geometry::{Rectangle, RectangleWithId};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rstar::{RTree, RTreeObject};
 use std::collections::HashMap;
 use union_find::{QuickUnionUf, UnionBySize, UnionFind};
@@ -66,27 +67,22 @@ pub fn merge_components(
  */
 pub fn group_rects_by_overlap(rectangles: &[Rectangle]) -> QuickUnionUf<UnionBySize> {
     let tree = index_rectangles(rectangles);
-
     let mut uf = QuickUnionUf::<UnionBySize>::new(rectangles.len());
-    for (i, rect) in rectangles.iter().enumerate() {
-        // Query the R-tree to find rectangles overlapping the current 'rect'
-        // locate_in_envelope_intersecting returns iter of &(Rectangle, usize)
-        for RectangleWithId(_overlapping_rect, j) in
+    let overlapping_pairs: Vec<(usize, usize)> = rectangles
+        .par_iter()
+        .enumerate()
+        .flat_map(|(i, rect)| {
             tree.locate_in_envelope_intersecting(&rect.envelope())
-        {
-            // 'candidate_tuple_ref' is &(Rectangle, usize)
-            // 'overlapping_rect' is &Rectangle
-            // 'j' is usize (the original index of the overlapping rectangle)
-
-            // We found an overlap between rectangle 'i' and rectangle 'j'.
-            // Ensure we don't try to union an item with itself.
-            if i != *j {
-                // Perform the union operation in the Union-Find structure.
-                // The union_find crate's union method merges the sets containing i and j.
-                // It's efficient even if i and j are already in the same set.
-                uf.union(i, *j);
-            }
-        }
+                .filter_map(
+                    move |RectangleWithId(_, j)| {
+                        if i < *j { Some((i, *j)) } else { None }
+                    },
+                )
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    for (i, j) in overlapping_pairs {
+        uf.union(i, j);
     }
     uf
 }
@@ -104,7 +100,7 @@ pub fn index_rectangles(rectangles: &[Rectangle]) -> RTree<RectangleWithId> {
     let rtree_data: Vec<RectangleWithId> = rectangles
         .iter()
         .enumerate()
-        .map(|(i, rect)| RectangleWithId(rect.clone(), i))
+        .map(|(i, rect)| RectangleWithId(rect, i))
         .collect();
 
     RTree::bulk_load(rtree_data)

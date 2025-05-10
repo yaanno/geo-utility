@@ -1,5 +1,5 @@
 use crate::processing::grouping::{group_rects_by_overlap, index_rectangles, merge_components};
-use crate::utils::geometry::{Rectangle, RectangleWithId};
+use crate::utils::geometry::{GeoFeatureCollection, GeoGeometry, Rectangle, RectangleWithId};
 use crate::utils::utils::{BoundingBoxOps, GERMANY_BBOX, Grid, InBoundingBox};
 use geo::geometry::LineString as GeoLineString;
 use geo::{BoundingRect, ConvexHull, Coord, MultiPoint, Point, Rect};
@@ -67,7 +67,7 @@ pub enum CollectBoundingBoxError {
  * A vector of bounding boxes.
  */
 pub fn collect_bounding_boxes(
-    featurecollection: &geojson::FeatureCollection,
+    featurecollection: &GeoFeatureCollection,
     radius: Radius,
     _combine: bool,
 ) -> Result<Vec<Rectangle>, CollectBoundingBoxError> {
@@ -92,7 +92,6 @@ pub fn collect_bounding_boxes(
     }
 
     let initial_grid_cells = calculate_initial_grid_cells(Some(overall_initial_extent))?;
-
     let uf = group_rects_by_overlap(&rectangles);
     let merged_rectangles: Vec<Rectangle> = merge_components(&rectangles, uf);
 
@@ -193,7 +192,7 @@ fn calculate_initial_grid_cells(
  * A vector of buffered rectangles.
  */
 fn collect_initial_buffered_rects(
-    featurecollection: &geojson::FeatureCollection,
+    featurecollection: &GeoFeatureCollection,
     radius: f64,
     proj_transformer: &Proj,
 ) -> Vec<geo::Rect> {
@@ -208,7 +207,7 @@ fn collect_initial_buffered_rects(
         }
 
         let geometry_value = match feature.geometry.as_ref() {
-            Some(geometry) => &geometry.value,
+            Some(geometry) => geometry,
             None => {
                 continue;
             }
@@ -216,31 +215,27 @@ fn collect_initial_buffered_rects(
         let mut coords: Vec<Coord> = Vec::new();
         let mut all_points_in_germany = true;
         match geometry_value {
-            geojson::Value::Point(coord) => {
-                let geo_coord = Coord {
-                    x: coord[0],
-                    y: coord[1],
-                };
-                if geo_coord.in_bounding_box(&GERMANY_BBOX) {
-                    coords.push(geo_coord);
+            GeoGeometry::Point(coord) => {
+                if coord.in_bounding_box(&GERMANY_BBOX) {
+                    coords.push(Coord {
+                        x: coord.x(),
+                        y: coord.y(),
+                    });
                 } else {
                     all_points_in_germany = false;
                 }
             }
-            geojson::Value::LineString(line_coords) => {
-                let line_coords_geo: Vec<Coord> = line_coords
-                    .iter()
-                    .map(|c| Coord { x: c[0], y: c[1] })
-                    .collect();
-                if line_coords_geo
-                    .iter()
-                    .any(|c| !c.in_bounding_box(&GERMANY_BBOX))
-                {
+            GeoGeometry::LineString(line_coords) => {
+                if !line_coords.in_bounding_box(&GERMANY_BBOX) {
                     all_points_in_germany = false;
                 } else {
+                    let line_coords_geo: Vec<Coord> = line_coords
+                        .coords()
+                        .map(|c| Coord { x: c.x, y: c.y })
+                        .collect();
                     coords.extend(&line_coords_geo);
                 }
-            }
+            }   
             _ => {
                 continue;
             }
@@ -259,13 +254,13 @@ fn collect_initial_buffered_rects(
             .collect::<HashSet<_>>()
             .len();
         if unique_coords_count < 3 {
-            let projected_geometry_to_process = match geometry_value.type_name() {
-                "Point" => geo::Geometry::Point(Point::from(
+            let projected_geometry_to_process = match geometry_value {
+                GeoGeometry::Point(_) => geo::Geometry::Point(Point::from(
                     *projected_coords
                         .first()
                         .expect("Point should have 1 projected coord"),
                 )),
-                "LineString" => {
+                GeoGeometry::LineString(_) => {
                     geo::Geometry::LineString(GeoLineString::new(projected_coords.clone()))
                 }
                 _ => unreachable!("Should only be Point or LineString at this stage"),
@@ -328,28 +323,24 @@ pub fn calculate_overall_extent(rectangles: &[Rectangle]) -> Result<Rect, Collec
 
 #[cfg(test)]
 mod tests {
-    use geojson::{Feature, FeatureCollection};
+    use crate::utils::geometry::{GeoFeature, GeoFeatureCollection};
 
     use super::*; // Import items from the parent module
 
     // Helper function to create a point feature
-    fn point_feature(x: f64, y: f64) -> geojson::Feature {
-        geojson::Feature {
+    fn point_feature(x: f64, y: f64) -> GeoFeature {
+        GeoFeature {
             bbox: None, // Bbox is calculated later
-            geometry: Some(geojson::Geometry {
-                value: geojson::Value::Point(vec![x, y]),
-                bbox: None,
-                foreign_members: None,
-            }),
-            properties: None,
+            geometry: Some(GeoGeometry::Point(Point::new(x, y))),
             foreign_members: None,
+            properties: None,
             id: None,
         }
     }
 
     //     // Helper to create a FeatureCollection
-    fn feature_collection(features: Vec<Feature>) -> FeatureCollection {
-        FeatureCollection {
+    fn feature_collection(features: Vec<GeoFeature>) -> GeoFeatureCollection {
+        GeoFeatureCollection {
             bbox: None,
             features,
             foreign_members: None,

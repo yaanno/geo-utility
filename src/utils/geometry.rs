@@ -64,10 +64,10 @@ impl RTreeObject for Rectangle {
 }
 
 /// Struct to hold a rectangle with an associated index
-pub struct RectangleWithId(pub Rectangle, pub usize);
+pub struct RectangleWithId<'a>(pub &'a Rectangle, pub usize);
 
 /// Allow the RectangleWithId to be used as an RTreeObject
-impl RTreeObject for RectangleWithId {
+impl<'a> RTreeObject for RectangleWithId<'a> {
     type Envelope = AABB<[f64; 2]>;
 
     fn envelope(&self) -> Self::Envelope {

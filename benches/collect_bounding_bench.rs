@@ -22,7 +22,7 @@ fn bench_100_features(c: &mut Criterion) {
         b.iter_with_setup(
             || {
                 // This setup closure is run before each iteration to provide input
-                features_100.clone() // Clone the data here
+                features_100.clone().into() // Clone the data here
             },
             |input_data| {
                 // This is the code being timed
@@ -41,7 +41,7 @@ fn bench_1k_features(c: &mut Criterion) {
         b.iter_with_setup(
             || {
                 // This setup closure is run before each iteration to provide input
-                features_1k.clone() // Clone the data here
+                features_1k.clone().into() // Clone the data here
             },
             |input_data| {
                 // This is the code being timed
@@ -60,7 +60,7 @@ fn bench_10k_features(c: &mut Criterion) {
         b.iter_with_setup(
             || {
                 // This setup closure is run before each iteration to provide input
-                features_10k.clone() // Clone the data here
+                features_10k.clone().into() // Clone the data here
             },
             |input_data| {
                 // This is the code being timed
@@ -79,7 +79,7 @@ fn bench_100k_features(c: &mut Criterion) {
         b.iter_with_setup(
             || {
                 // This setup closure is run before each iteration to provide input
-                features_100k.clone() // Clone the data here
+                features_100k.clone().into() // Clone the data here
             },
             |input_data| {
                 // This is the code being timed
@@ -98,7 +98,7 @@ fn bench_1000k_features(c: &mut Criterion) {
         b.iter_with_setup(
             || {
                 // This setup closure is run before each iteration to provide input
-                features_1m.clone() // Clone the data here
+                features_1m.clone().into() // Clone the data here
             },
             |input_data| {
                 // This is the code being timed
