@@ -788,8 +788,8 @@ mod tests {
         });
         let geojson_feature = convert_domain_entity_to_geojson_feature(domain_entity);
         assert_eq!(geojson_feature.id.unwrap(), Id::String("No ID".to_string()));
-        assert_eq!(geojson_feature.geometry.is_none(), true);
-        assert_eq!(geojson_feature.properties.is_none(), true);
+        assert!(geojson_feature.geometry.is_none());
+        assert!(geojson_feature.properties.is_none());
     }
     #[test]
     fn test_convert_domain_entities_to_geojson_features() {

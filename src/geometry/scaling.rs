@@ -976,7 +976,7 @@ mod tests {
     #[test]
     fn test_scale_feature_with_metadata_copied() {
         let input_point = Point::new(10.0, 20.0);
-        let input_collection = create_feature_with_metadata(Some(GeoGeometry::Point(input_point.clone())));
+        let input_collection = create_feature_with_metadata(Some(GeoGeometry::Point(input_point)));
         let scale_factor = 0.5;
 
         let mut cloned_collection = input_collection.clone();

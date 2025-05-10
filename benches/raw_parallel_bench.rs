@@ -25,7 +25,8 @@ fn bench_100_features(c: &mut Criterion) {
             },
             |input_data| {
                 let results = process_raw_geojson_parallel(input_data);
-                black_box(results.unwrap());
+                results.unwrap();
+                black_box(());
             }
         )
     });
@@ -42,7 +43,8 @@ fn bench_1k_features(c: &mut Criterion) {
             },
             |input_data| {
                 let results = process_raw_geojson_parallel(input_data);
-                black_box(results.unwrap());
+                results.unwrap();
+                black_box(());
             }
         )
     });
@@ -59,7 +61,8 @@ fn bench_10k_features(c: &mut Criterion) {
             },
             |input_data| {
                 let results = process_raw_geojson_parallel(input_data);
-                black_box(results.unwrap());
+                results.unwrap();
+                black_box(());
             }
         )
     });
@@ -76,7 +79,8 @@ fn bench_100k_features(c: &mut Criterion) {
             },
             |input_data| {
                 let results = process_raw_geojson_parallel(input_data);
-                black_box(results.unwrap());
+                results.unwrap();
+                black_box(());
             }
         )
     });
@@ -93,7 +97,8 @@ fn bench_1000k_features(c: &mut Criterion) {
             },
             |input_data| {
                 let results = process_raw_geojson_parallel(input_data);
-                black_box(results.unwrap());
+                results.unwrap();
+                black_box(());
             }
         )
     });
@@ -110,7 +115,8 @@ fn bench_10_000k_features(c: &mut Criterion) {
             },
             |input_data| {
                 let results = process_raw_geojson_parallel(input_data);
-                black_box(results.unwrap());
+                results.unwrap();
+                black_box(());
             }
         )
     });

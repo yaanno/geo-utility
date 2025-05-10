@@ -1002,7 +1002,7 @@ mod tests {
         // Collect canonical representations of returned hulls
         let returned_canonical: HashSet<Vec<(OrderedFloat<f64>, OrderedFloat<f64>)>> = hulls
             .iter()
-            .map(|h| canonical_hull_unique_sorted_points(h))
+            .map(canonical_hull_unique_sorted_points)
             .collect();
 
         // Collect canonical representations of expected hulls

@@ -524,7 +524,7 @@ mod tests {
             "is_merged vector size should match valid LineStrings count"
         );
         assert!(
-            is_merged.iter().all(|&m| m == false),
+            is_merged.iter().all(|&m| !m),
             "All is_merged flags should be initially false"
         );
 

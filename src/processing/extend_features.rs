@@ -250,7 +250,7 @@ mod tests {
         // So, expect features from ~4 points in total.
         // Each point generates one LineString with 4 segments (8 coordinates).
         assert!(
-            generated_features.len() > 0,
+            !generated_features.is_empty(),
             "Should generate features from processed lines"
         );
         assert!(
